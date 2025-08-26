@@ -8,7 +8,7 @@ class Box:
         self.rect = pygame.Rect(coords, size)
         self.selected = False
         self.selected_red = False
-        self.terrain = terrain  # Future Feature
+        self.terrain = terrain 
         self.terrain_name = ""
         self.terrain_desc = ""
         self.color = WHITE
