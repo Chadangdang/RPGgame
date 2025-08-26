@@ -54,3 +54,4 @@ class Box:
             pygame.draw.rect(self.screen, YELLOW, self.rect, 4)
         if self.selected_red:
             pygame.draw.rect(self.screen, RED, self.rect, 4)
+            #kuy
