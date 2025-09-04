@@ -596,7 +596,7 @@ class GameMain:
             self.screen.blit(shadow0, shadow0_rect)
             self.screen.blit(Control_text, Control_rect)
 
-            # Control select
+            # Control line 1
             control1_text = self.font_s.render("Z / Left Click : Select", False, WHITE)
             control1_rect = control1_text.get_rect(topleft=(290, 630))
             shadow1 = self.font_s.render("Z / Left Click : Select", False, BLACK)
@@ -604,7 +604,7 @@ class GameMain:
             self.screen.blit(shadow1, shadow1_rect)
             self.screen.blit(control1_text, control1_rect)
             
-            # Control cancel
+            # Control line 2
             control2_text = self.font_s.render("X / Right Click : Cancel", False, WHITE)
             control2_rect = control2_text.get_rect(topleft=(290, 667))
             shadow2 = self.font_s.render("X / Right Click : Cancel", False, BLACK)
@@ -612,7 +612,7 @@ class GameMain:
             self.screen.blit(shadow2, shadow2_rect)
             self.screen.blit(control2_text, control2_rect)
             
-            # Control auto
+            # Control line 3
             control3_text = self.font_s.render("A : Auto setting", False, WHITE)
             control3_rect = control3_text.get_rect(topleft=(690, 630))
             shadow3 = self.font_s.render("A : Auto setting", False, BLACK)
@@ -620,7 +620,7 @@ class GameMain:
             self.screen.blit(shadow3, shadow3_rect)
             self.screen.blit(control3_text, control3_rect)
             
-            # Control start
+            # Control line 4
             control4_text = self.font_s.render("Enter : Start the game", False, WHITE)
             control4_rect = control4_text.get_rect(topleft=(690, 667))
             shadow4 = self.font_s.render("Enter : Start the game", False, BLACK)
