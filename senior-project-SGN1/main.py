@@ -18,18 +18,9 @@ class GameMain:
         pygame.init()
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
 
-        self.game_screen = -1
-        # -1 = Start Screen
+        self.game_screen = 0
         # 0 = AI Selection Screen
         # 1 = Game Screen
-
-        # Load background image
-        self.background = pygame.image.load('resource/background/background_1.png')
-        self.background = pygame.transform.scale(self.background, (WIDTH, HEIGHT))
-
-        # Play button properties
-        self.play_button_rect = pygame.Rect(510, 405, 250, 100)
-        self.play_button_hovered = False
 
         self.menu_cursor = HoverMenuCursor(self.screen, (420, 60), (5, 2))
         self.p1_sel_cursor = SelectMenuCursor(self.screen, (420, 60), (5, 1))
@@ -174,22 +165,7 @@ class GameMain:
 
 
     def update(self, dt: float, events: list[pygame.event.Event]) -> None:
-        if self.game_screen == -1:      # Start screen
-            mouse_pos = pygame.mouse.get_pos()
-            self.play_button_hovered = self.play_button_rect.collidepoint(mouse_pos)
-            
-            for event in events:
-                if event.type == pygame.QUIT:
-                    pygame.quit()
-                    sys.exit()
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
-                        self.game_screen = 0  # Go to AI selection screen
-                if event.type == pygame.MOUSEBUTTONDOWN:
-                    if event.button == 1 and self.play_button_hovered:  # Left click on play button
-                        self.game_screen = 0  # Go to AI selection screen
-                        
-        elif self.game_screen == 0:       # AI select screen
+        if self.game_screen == 0:       # AI select screen
             for event in events:
                 if event.type == pygame.QUIT:
                     pygame.quit()
@@ -574,61 +550,7 @@ class GameMain:
             # Cursor.state = self.field.update(dt, events, Cursor.state)
 
     def render(self) -> None:
-        if self.game_screen == -1:      # Start screen
-            # Draw background
-            self.screen.blit(self.background, (0, 0))
-            
-            # Draw play button
-            button_color = (255, 255, 255) if self.play_button_hovered else (235, 235, 235)
-            pygame.draw.rect(self.screen, button_color, self.play_button_rect)
-            pygame.draw.rect(self.screen, BLACK, self.play_button_rect, 2)
-            
-            # Draw play button text
-            play_text = self.font_m.render("PLAY", False, (50, 50, 50))
-            text_rect = play_text.get_rect(center=(self.play_button_rect.centerx, self.play_button_rect.centery + 5))
-            self.screen.blit(play_text, text_rect)
-            
-            # "Control :"
-            Control_text = self.font_s.render("Control :", False, WHITE)
-            Control_rect = Control_text.get_rect(topleft=(290, 580))
-            shadow0 = self.font_s.render("Control :", False, BLACK)
-            shadow0_rect = shadow0.get_rect(topleft=(292, 582))
-            self.screen.blit(shadow0, shadow0_rect)
-            self.screen.blit(Control_text, Control_rect)
-
-            # Control line 1
-            control1_text = self.font_s.render("Z / Left Click : Select", False, WHITE)
-            control1_rect = control1_text.get_rect(topleft=(290, 630))
-            shadow1 = self.font_s.render("Z / Left Click : Select", False, BLACK)
-            shadow1_rect = shadow1.get_rect(topleft=(292, 632))
-            self.screen.blit(shadow1, shadow1_rect)
-            self.screen.blit(control1_text, control1_rect)
-            
-            # Control line 2
-            control2_text = self.font_s.render("X / Right Click : Cancel", False, WHITE)
-            control2_rect = control2_text.get_rect(topleft=(290, 667))
-            shadow2 = self.font_s.render("X / Right Click : Cancel", False, BLACK)
-            shadow2_rect = shadow2.get_rect(topleft=(292, 669))
-            self.screen.blit(shadow2, shadow2_rect)
-            self.screen.blit(control2_text, control2_rect)
-            
-            # Control line 3
-            control3_text = self.font_s.render("A : Auto setting", False, WHITE)
-            control3_rect = control3_text.get_rect(topleft=(690, 630))
-            shadow3 = self.font_s.render("A : Auto setting", False, BLACK)
-            shadow3_rect = shadow3.get_rect(topleft=(692, 632))
-            self.screen.blit(shadow3, shadow3_rect)
-            self.screen.blit(control3_text, control3_rect)
-            
-            # Control line 4
-            control4_text = self.font_s.render("Enter : Start the game", False, WHITE)
-            control4_rect = control4_text.get_rect(topleft=(690, 667))
-            shadow4 = self.font_s.render("Enter : Start the game", False, BLACK)
-            shadow4_rect = shadow4.get_rect(topleft=(692, 669))
-            self.screen.blit(shadow4, shadow4_rect)
-            self.screen.blit(control4_text, control4_rect)
-            
-        elif self.game_screen == 0:
+        if self.game_screen == 0:
             self.screen.fill(SMOKE)
 
             p1_text = self.font_l.render(f"Player 1", False, (0, 0, 0))

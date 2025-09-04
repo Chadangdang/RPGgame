@@ -1,7 +1,7 @@
 import pygame, sys
 
 WIDTH = 1280
-HEIGHT = 1100
+HEIGHT = 720
 
 # Colors
 WHITE = (255, 255, 255)
