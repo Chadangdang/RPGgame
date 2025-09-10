@@ -11,6 +11,29 @@ import AI
 from GameMaster import GameMaster
 from MapData import MapData
 
+# === Board placement (top-left of the 640x640 grid) ===
+# Lower this to move the whole board (and its A–H / 1–8 labels) higher on screen.
+BOARD_POS_X = WIDTH // 2 - 320
+BOARD_POS_Y = 40
+
+# === Game Log placement (anchored under the board) ===
+LOG_W = WIDTH - 40              # full-ish width (tweak as you like)
+LOG_H = 240                     # panel height (was 280)
+LOG_X = 20                      # left margin
+LOG_Y = BOARD_POS_Y + 700 + 12  # 12px below the 640x640 board
+
+# --- Cream UI colors for the bottom log panel (like your screenshot) ---
+UI_PANEL  = (245, 238, 228)   # panel fill
+UI_HEADER = (233, 226, 214)   # header strip
+UI_BORDER = (30, 30, 30)      # dark border
+UI_TEXT   = (20, 20, 20)      # text
+
+# --- Scrollbar colors ---
+SB_TRACK       = (220, 213, 200)
+SB_THUMB       = (160, 150, 135)
+SB_THUMB_HOVER = (145, 135, 120)
+SB_THUMB_DRAG  = (130, 120, 105)
+
 class GameMain:
     game_screen: int
 
@@ -56,6 +79,100 @@ class GameMain:
         self.GameMaster = GameMaster()
         self.currentMatch = 0
 
+        # Pass player turn button
+        self.pass_turn_button_rect = pygame.Rect(987, 620, 245, 45)
+        self.pass_turn_button_hovered = False
+
+        # --- Game Log store ---
+        # store tuples: (text, color)
+        self.game_log: list[tuple[str, tuple[int, int, int]]] = []
+        # used to mirror newly-added lines from activeAI.action_log
+        self._ai_log_len = 0
+
+        # --- Log panel style (header height kept) ---
+        self._log_header_h = 28
+        self._log_line_h = 22
+        self._log_scroll_step = 1   # lines per wheel tick
+        self._log_page_step = 8     # lines per page jump
+
+        # --- Log scrolling state ---
+        # Now: 0 means show from the very first line (oldest) at top.
+        # Increase this to scroll down to newer content.
+        self.log_scroll = 0
+
+        # --- Scrollbar interaction state ---
+        self._sb_dragging = False
+        self._sb_drag_offset_y = 0  # mouse offset inside thumb while dragging
+        self._sb_last_geometry = None  # cached geometry for hit tests
+
+    # --------- logging helper ----------
+    def log(self, text: str, color=(0, 0, 0)) -> None:
+        """Append a line to the game log."""
+        self.game_log.append((text, color))
+        if len(self.game_log) > 500:  # prevent unbounded growth
+            self.game_log.pop(0)
+        # We do NOT auto-jump to bottom; view stays where the user left it.
+
+    # --------- geometry helper used by render & input ----------
+    def _calc_log_geometry(self):
+        """Return a dict with log panel & scrollbar geometry and paging info."""
+        header_h = self._log_header_h
+        line_h = self._log_line_h
+
+        log_rect = pygame.Rect(LOG_X, LOG_Y, LOG_W, LOG_H)
+        header_rect = pygame.Rect(log_rect.x, log_rect.y, log_rect.w, header_h)
+
+        # Content area (lines) inside the panel below header, with small padding
+        content_x = log_rect.x + 8
+        content_y = header_rect.bottom + 6
+        content_h = log_rect.bottom - content_y - 6
+        max_lines = max(0, content_h // line_h)
+
+        # Scrollbar track on far right inside panel
+        sb_margin = 6
+        sb_width = 10
+        track_rect = pygame.Rect(
+            log_rect.right - sb_margin - sb_width,
+            header_rect.bottom + 6,
+            sb_width,
+            log_rect.bottom - (header_rect.bottom + 6) - 6
+        )
+
+        # Compute scroll bounds
+        # With chronological order, max_scroll is last possible start index
+        max_scroll = max(0, len(self.game_log) - max_lines)
+
+        # Thumb size proportional to visible fraction; enforce a minimum
+        if max_scroll == 0:
+            thumb_h = track_rect.height
+        else:
+            visible_fraction = max_lines / max(len(self.game_log), 1)
+            thumb_h = max(24, int(track_rect.height * visible_fraction))
+            thumb_h = min(thumb_h, track_rect.height)
+
+        # Thumb position maps log_scroll in [0, max_scroll] to y in [track.y, track.bottom - thumb_h]
+        if max_scroll == 0:
+            thumb_y = track_rect.y
+        else:
+            t = 0 if max_scroll == 0 else (self.log_scroll / max_scroll)  # 0..1  (0 = top/oldest, 1 = bottom/newest)
+            thumb_y = int(track_rect.y + t * (track_rect.height - thumb_h))
+
+        thumb_rect = pygame.Rect(track_rect.x, thumb_y, track_rect.width, thumb_h)
+
+        return {
+            "log_rect": log_rect,
+            "header_rect": header_rect,
+            "content_origin": (content_x, content_y),
+            "content_max_lines": max_lines,
+            "max_scroll": max_scroll,
+            "track_rect": track_rect,
+            "thumb_rect": thumb_rect,
+            "line_h": line_h
+        }
+
+    def _log_rect(self) -> pygame.Rect:
+        """Helper: current log panel rect (same as in render)."""
+        return pygame.Rect(LOG_X, LOG_Y, LOG_W, LOG_H)
 
     def screen1init(self):
 
@@ -69,6 +186,10 @@ class GameMain:
         self.currentMatch = 0
         self.total_p1_win = 0
         self.total_p2_win = 0
+        
+        # add a headline in the log when a game starts
+        self.log(f"Game {self.currentMatch + 1} started", UI_TEXT)
+
         self.startMatch()
         
         
@@ -104,13 +225,13 @@ class GameMain:
 
         if self.map_number == len(self.map_list):
             self.field = Field(self.screen,
-                               (WIDTH / 2 - 320, HEIGHT / 2 - 320),
+                               (BOARD_POS_X, BOARD_POS_Y),
                                (8, 8),
                                (640, 640),
                                rand_map=True)
         else:
             self.field = Field(self.screen,
-                               (WIDTH / 2 - 320, HEIGHT / 2 - 320),
+                               (BOARD_POS_X, BOARD_POS_Y),
                                (8, 8),
                                (640, 640),
                                rand_map=False,
@@ -170,9 +291,13 @@ class GameMain:
         else:
             self.action_delay = 0.8
 
+        # new round headline
+        self.log(f"Round {self.round} begins", UI_TEXT)
+        self._ai_log_len = 0  # reset mirror of AI log this match
+        # Start at very top (oldest first visible)
+        self.log_scroll = 0
+
         
-
-
     def update(self, dt: float, events: list[pygame.event.Event]) -> None:
         if self.game_screen == -1:      # Start screen
             mouse_pos = pygame.mouse.get_pos()
@@ -182,9 +307,6 @@ class GameMain:
                 if event.type == pygame.QUIT:
                     pygame.quit()
                     sys.exit()
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
-                        self.game_screen = 0  # Go to AI selection screen
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     if event.button == 1 and self.play_button_hovered:  # Left click on play button
                         self.game_screen = 0  # Go to AI selection screen
@@ -221,10 +343,74 @@ class GameMain:
                             self.map_number = 0
 
         elif self.game_screen == 1:
+            # cache geometry for this frame
+            geom = self._calc_log_geometry()
+            self._sb_last_geometry = geom
+
+            # Pass turn button hover
+            mouse_pos = pygame.mouse.get_pos()
+            self.pass_turn_button_hovered = self.pass_turn_button_rect.collidepoint(mouse_pos)
             for event in events:
                 if event.type == pygame.QUIT:
                     pygame.quit()
                     sys.exit()
+                
+                # --- Mouse wheel scrolling for the log (only when pointer over the log) ---
+                if event.type == pygame.MOUSEWHEEL:
+                    if geom["log_rect"].collidepoint(pygame.mouse.get_pos()):
+                        # Wheel UP => move toward top (older) -> decrease index
+                        if event.y > 0:
+                            self.log_scroll = max(0, self.log_scroll - self._log_scroll_step * abs(event.y))
+                        # Wheel DOWN => move toward bottom (newer) -> increase index
+                        elif event.y < 0:
+                            self.log_scroll = min(geom["max_scroll"],
+                                                  self.log_scroll + self._log_scroll_step * abs(event.y))
+
+                # --- Scrollbar mouse interactions ---
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    mx, my = event.pos
+                    if geom["thumb_rect"].collidepoint(mx, my):
+                        # start dragging the thumb
+                        self._sb_dragging = True
+                        self._sb_drag_offset_y = my - geom["thumb_rect"].y
+                    elif geom["track_rect"].collidepoint(mx, my):
+                        # click on track: page up/down towards click
+                        if my < geom["thumb_rect"].y:
+                            # page up (toward top/older) -> decrease index
+                            self.log_scroll = max(0, self.log_scroll - self._log_page_step)
+                        elif my > geom["thumb_rect"].bottom:
+                            # page down (toward bottom/newer) -> increase index
+                            self.log_scroll = min(geom["max_scroll"], self.log_scroll + self._log_page_step)
+                    elif self.GameMaster.isActiveAIHuman():
+                        if self.pass_turn_button_rect.collidepoint(event.pos):
+                            # Pass the player's turn via button click
+                            self.GameMaster.activeAI.turnFinished = True
+                            Cursor.state = 0
+                            self.field.select_cursor.show = False
+                            self.field.hover_cursor.show = True
+
+                if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                    self._sb_dragging = False
+
+                if event.type == pygame.MOUSEMOTION and self._sb_dragging:
+                    mx, my = event.pos
+                    track = geom["track_rect"]
+                    max_scroll = geom["max_scroll"]
+                    thumb_h = geom["thumb_rect"].height
+
+                    # compute new thumb y from mouse, clamped to track
+                    new_thumb_y = my - self._sb_drag_offset_y
+                    min_y = track.y
+                    max_y = track.bottom - thumb_h
+                    new_thumb_y = max(min_y, min(max_y, new_thumb_y))
+
+                    # map thumb position to log_scroll (top of track => 0 (oldest), bottom => max_scroll (newest))
+                    if max_scroll == 0:
+                        self.log_scroll = 0
+                    else:
+                        t = (new_thumb_y - track.y) / (track.height - thumb_h)
+                        self.log_scroll = int(round(t * max_scroll))
+
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_1:
                         self.action_delay = 0.1
@@ -240,6 +426,20 @@ class GameMain:
                     if event.key == pygame.K_p:
                         if self.game_state == 'win' or self.game_state == 'lose':
                             self.game_screen = 0
+                        elif self.GameMaster.isActiveAIHuman():
+                            # Pass the player's turn immediately
+                            self.GameMaster.activeAI.turnFinished = True
+                            Cursor.state = 0
+                            self.field.select_cursor.show = False
+                            self.field.hover_cursor.show = True
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    if event.button == 1 and self.GameMaster.isActiveAIHuman():
+                        if self.pass_turn_button_rect.collidepoint(event.pos):
+                            # Pass the player's turn via button click
+                            self.GameMaster.activeAI.turnFinished = True
+                            Cursor.state = 0
+                            self.field.select_cursor.show = False
+                            self.field.hover_cursor.show = True
 
                 # if event.type == pygame.KEYDOWN:
                 #     if event.key == pygame.K_p and Cursor.state != 5 and Cursor.state != 6 and self.game_state == 'attacking phase':
@@ -563,6 +763,8 @@ class GameMain:
                             self.field.hover_cursor.show = True
                             self.p1_dom_count = 0  # remove these 2 lines may cause a bug
                             self.p2_dom_count = 0  # but it may be a good feature
+                            # log new round headline
+                            self.log(f"Round {self.round} begins_check", UI_TEXT)
 
                         self.number_action = -1
                         for chara in Character.team1_list + Character.team2_list:
@@ -570,6 +772,16 @@ class GameMain:
                             chara.acted = False
 
                         self.GameMaster.startRound()
+
+            # --- Mirror any NEW lines from activeAI.action_log to the Game Log ---
+            if hasattr(self.GameMaster, "activeAI") and self.GameMaster.activeAI is not None:
+                log = getattr(self.GameMaster.activeAI, "action_log", None)
+                if isinstance(log, list):
+                    if len(log) > self._ai_log_len:
+                        # only append the new tail
+                        for line in log[self._ai_log_len:]:
+                            self.log(line, getattr(self.GameMaster.activeAI, "color", (0,0,0)))
+                        self._ai_log_len = len(log)
 
             # Cursor.state = self.field.update(dt, events, Cursor.state)
 
@@ -785,7 +997,7 @@ class GameMain:
                     self.screen.blit(text, text_rect)
                     i += 20
             else:
-                pygame.draw.rect(self.screen, (0, 0, 0), pygame.Rect(980, 40, 260, 640), 2)
+                pygame.draw.rect(self.screen, (0, 0, 0), pygame.Rect(980, 40, 260, 560), 2)
                 objective_menu_text = self.font_s.render("Actions List", False, (0, 0, 0))
                 text_rect = objective_menu_text.get_rect(topleft=(990, 50))
                 self.screen.blit(objective_menu_text, text_rect)
@@ -796,9 +1008,9 @@ class GameMain:
                     else:
                         chara = self.field.select_cursor.getChara()
                     for index, action in enumerate(chara.template["actions"]):
-                        pygame.draw.rect(self.screen, (0, 0, 0), pygame.Rect(1000, 80 + i, 220, 150), 1)
+                        pygame.draw.rect(self.screen, (0, 0, 0), pygame.Rect(1000, 88 + i, 220, 150), 1)
                         if Cursor.selected_action == index:
-                            pygame.draw.rect(self.screen, YELLOW, pygame.Rect(1000, 80 + i, 220, 150), 4)
+                            pygame.draw.rect(self.screen, YELLOW, pygame.Rect(1000, 88 + i, 220, 150), 4)
                         objective_menu_text = self.font_s.render(action["action_display_name"], False, (0, 0, 0))
                         text_rect = objective_menu_text.get_rect(topleft=(1010, 90 + i))
                         self.screen.blit(objective_menu_text, text_rect)
@@ -814,33 +1026,36 @@ class GameMain:
                         objective_menu_text = self.font_s.render(f'Damage : {action["damage"]}', False, (0, 0, 0))
                         text_rect = objective_menu_text.get_rect(topleft=(1015, 195 + i))
                         self.screen.blit(objective_menu_text, text_rect)
-                        i += 180
-                    pygame.draw.rect(self.screen, (0, 0, 0), pygame.Rect(1000, 620, 220, 40), 1)
-                    if Cursor.selected_action == len(chara.template['actions']):       # Pass button
-                        pygame.draw.rect(self.screen, YELLOW, pygame.Rect(1000, 620, 220, 40), 4)
-                    objective_menu_text = self.font_s.render('Pass', False, (0, 0, 0))
-                    text_rect = objective_menu_text.get_rect(topleft=(1010, 630))
-                    self.screen.blit(objective_menu_text, text_rect)
+                        i += 170
+                # Pass player turn button (mouse only)
+                # Draw button with hover highlight
+                pygame.draw.rect(self.screen, (235, 235, 235), self.pass_turn_button_rect)
+                pygame.draw.rect(self.screen, (0, 0, 0), self.pass_turn_button_rect, 1)
+                if self.pass_turn_button_hovered:
+                    pygame.draw.rect(self.screen, YELLOW, self.pass_turn_button_rect, 3)
+                pass_turn_text = self.font_s.render('Pass player turn', False, (0, 0, 0))
+                text_rect = pass_turn_text.get_rect(center=self.pass_turn_button_rect.center)
+                self.screen.blit(pass_turn_text, text_rect)
 
             # info text
             if Cursor.state == 0:
-                action_text = self.font_s.render("Z : Move Unit / Perform Action    X : Does Nothing    P : Pass All", False, (0, 0, 0))
+                action_text = self.font_s.render("Z : Move Unit / Perform Action    X : Does Nothing    P : Pass player turn", False, (0, 0, 0))
                 text_rect = action_text.get_rect(topleft=(50, 690))
                 self.screen.blit(action_text, text_rect)
             elif Cursor.state == 1:
-                action_text = self.font_s.render("Z : Move Unit    X : Cancel    P : Pass All", False, (0, 0, 0))
+                action_text = self.font_s.render("Z : Move Unit    X : Cancel    P : Pass player turn", False, (0, 0, 0))
                 text_rect = action_text.get_rect(topleft=(50, 690))
                 self.screen.blit(action_text, text_rect)
             elif Cursor.state == 2:
-                action_text = self.font_s.render("Z : Confirm Option    X : Cancel    P : Pass All", False, (0, 0, 0))
+                action_text = self.font_s.render("Z : Confirm Option    X : Cancel    P : Pass player turn", False, (0, 0, 0))
                 text_rect = action_text.get_rect(topleft=(50, 690))
                 self.screen.blit(action_text, text_rect)
             elif Cursor.state == 3:
-                action_text = self.font_s.render("Z : Does Nothing    X : Cancel    P : Pass All", False, (0, 0, 0))
+                action_text = self.font_s.render("Z : Does Nothing    X : Cancel    P : Pass player turn", False, (0, 0, 0))
                 text_rect = action_text.get_rect(topleft=(50, 690))
                 self.screen.blit(action_text, text_rect)
             elif Cursor.state == 4:
-                action_text = self.font_s.render("Z : Perform Action    X : Cancel    P : Pass All", False, (0, 0, 0))
+                action_text = self.font_s.render("Z : Perform Action    X : Cancel    P : Pass player turn", False, (0, 0, 0))
                 text_rect = action_text.get_rect(topleft=(50, 690))
                 self.screen.blit(action_text, text_rect)
             elif Cursor.state == 5:
@@ -892,6 +1107,56 @@ class GameMain:
                 round_text = self.font_l.render(f"P2 Win!!", False, (0, 0, 0))
                 text_rect = round_text.get_rect(center=(WIDTH // 2, HEIGHT // 2))
                 self.screen.blit(round_text, text_rect)
+
+            # ----------------- Game Log Panel (with SCROLLBAR) -----------------
+            geom = self._calc_log_geometry()
+
+            # panel fill + border
+            pygame.draw.rect(self.screen, UI_PANEL, geom["log_rect"])
+            pygame.draw.rect(self.screen, UI_BORDER, geom["log_rect"], 2)
+
+            # header strip
+            pygame.draw.rect(self.screen, UI_HEADER, geom["header_rect"])
+            pygame.draw.rect(self.screen, UI_BORDER, geom["header_rect"], 2)
+
+            title = self.font_s.render("Game Log", False, UI_TEXT)
+            self.screen.blit(title, title.get_rect(topleft=(geom["header_rect"].x + 8, geom["header_rect"].y + 4)))
+
+            # log lines (chronological: oldest at top)
+            x, y = geom["content_origin"]
+            line_h = geom["line_h"]
+            max_lines = geom["content_max_lines"]
+
+            # clamp scroll to what can actually scroll right now
+            max_scroll = geom["max_scroll"]
+            if self.log_scroll > max_scroll:
+                self.log_scroll = max_scroll
+            if self.log_scroll < 0:
+                self.log_scroll = 0
+
+            start = self.log_scroll
+            end   = min(len(self.game_log), start + max_lines)
+
+            for text, color in self.game_log[start:end]:
+                img = self.font_s.render(text, False, color)
+                self.screen.blit(img, (x, y))
+                y += line_h
+
+            # Scrollbar track
+            pygame.draw.rect(self.screen, SB_TRACK, geom["track_rect"], border_radius=5)
+
+            # Thumb (hover / drag colors)
+            mouse_pos = pygame.mouse.get_pos()
+            if self._sb_dragging:
+                thumb_color = SB_THUMB_DRAG
+            elif geom["thumb_rect"].collidepoint(mouse_pos):
+                thumb_color = SB_THUMB_HOVER
+            else:
+                thumb_color = SB_THUMB
+
+            pygame.draw.rect(self.screen, thumb_color, geom["thumb_rect"], border_radius=5)
+            pygame.draw.rect(self.screen, UI_BORDER, geom["thumb_rect"], 1, border_radius=5)
+            # -----------------------------------------------------------------------
 
 if __name__ == '__main__':
     main = GameMain()
