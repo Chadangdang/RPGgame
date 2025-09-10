@@ -18,12 +18,12 @@ BOARD_POS_Y = 40
 
 # === Game Log placement (anchored under the board) ===
 LOG_W = WIDTH - 40              # full-ish width (tweak as you like)
-LOG_H = 240                     # panel height (was 280)
+LOG_H = 270                     # panel height (was 280)
 LOG_X = 20                      # left margin
-LOG_Y = BOARD_POS_Y + 700 + 12  # 12px below the 640x640 board
+LOG_Y = BOARD_POS_Y + 700
 
 # --- Cream UI colors for the bottom log panel (like your screenshot) ---
-UI_PANEL  = (245, 238, 228)   # panel fill
+UI_PANEL  = (251, 247, 242)   # panel fill
 UI_HEADER = (233, 226, 214)   # header strip
 UI_BORDER = (30, 30, 30)      # dark border
 UI_TEXT   = (20, 20, 20)      # text
@@ -187,12 +187,7 @@ class GameMain:
         self.total_p1_win = 0
         self.total_p2_win = 0
         
-        # add a headline in the log when a game starts
-        self.log(f"Game {self.currentMatch + 1} started", UI_TEXT)
-
-        self.startMatch()
-        
-        
+        self.startMatch()     
         
 
         # if self.p2_sel_cursor.grid[0] == 0:
@@ -211,6 +206,10 @@ class GameMain:
 
     def startMatch(self) -> None:
         self.currentMatch += 1
+        
+        # add a headline in the log when a game starts
+        self.log(f"Game {self.currentMatch} starts", UI_TEXT)
+        
         if self.isAuto and self.currentMatch > self.match_limit:
             print("Auto mode completed after " + str(self.match_limit) + " matches.")
             print("Player 1: " + str(self.total_p1_win) + " wins")
@@ -764,7 +763,7 @@ class GameMain:
                             self.p1_dom_count = 0  # remove these 2 lines may cause a bug
                             self.p2_dom_count = 0  # but it may be a good feature
                             # log new round headline
-                            self.log(f"Round {self.round} begins_check", UI_TEXT)
+                            self.log(f"Round {self.round} begins", UI_TEXT)
 
                         self.number_action = -1
                         for chara in Character.team1_list + Character.team2_list:
@@ -1040,27 +1039,27 @@ class GameMain:
             # info text
             if Cursor.state == 0:
                 action_text = self.font_s.render("Z : Move Unit / Perform Action    X : Does Nothing    P : Pass player turn", False, (0, 0, 0))
-                text_rect = action_text.get_rect(topleft=(50, 690))
+                text_rect = action_text.get_rect(topleft=(40, 697))
                 self.screen.blit(action_text, text_rect)
             elif Cursor.state == 1:
                 action_text = self.font_s.render("Z : Move Unit    X : Cancel    P : Pass player turn", False, (0, 0, 0))
-                text_rect = action_text.get_rect(topleft=(50, 690))
+                text_rect = action_text.get_rect(topleft=(40, 697))
                 self.screen.blit(action_text, text_rect)
             elif Cursor.state == 2:
                 action_text = self.font_s.render("Z : Confirm Option    X : Cancel    P : Pass player turn", False, (0, 0, 0))
-                text_rect = action_text.get_rect(topleft=(50, 690))
+                text_rect = action_text.get_rect(topleft=(40, 697))
                 self.screen.blit(action_text, text_rect)
             elif Cursor.state == 3:
                 action_text = self.font_s.render("Z : Does Nothing    X : Cancel    P : Pass player turn", False, (0, 0, 0))
-                text_rect = action_text.get_rect(topleft=(50, 690))
+                text_rect = action_text.get_rect(topleft=(40, 697))
                 self.screen.blit(action_text, text_rect)
             elif Cursor.state == 4:
                 action_text = self.font_s.render("Z : Perform Action    X : Cancel    P : Pass player turn", False, (0, 0, 0))
-                text_rect = action_text.get_rect(topleft=(50, 690))
+                text_rect = action_text.get_rect(topleft=(40, 697))
                 self.screen.blit(action_text, text_rect)
             elif Cursor.state == 5:
                 action_text = self.font_s.render("Z : Select / Move Unit    X : Confirm position", False, (0, 0, 0))
-                text_rect = action_text.get_rect(topleft=(50, 690))
+                text_rect = action_text.get_rect(topleft=(40, 697))
                 self.screen.blit(action_text, text_rect)
             # elif Cursor.state == 6:
             #     action_text = self.font_s.render("Z : Does Nothing   X : Cancel", False, (0, 0, 0))
@@ -1071,7 +1070,7 @@ class GameMain:
 
             # Round Indicator at corner
             round_text = self.font_s.render(f"Round : {self.round}", False, (0, 0, 0))
-            text_rect = round_text.get_rect(topright=(1230, 690))
+            text_rect = round_text.get_rect(topright=(1230, 697))
             self.screen.blit(round_text, text_rect)
 
             # Round Indicator at center
