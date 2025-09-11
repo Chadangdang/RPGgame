@@ -306,6 +306,9 @@ class GameMain:
                 if event.type == pygame.QUIT:
                     pygame.quit()
                     sys.exit()
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
+                        self.game_screen = 0  # Go to AI selection screen
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     if event.button == 1 and self.play_button_hovered:  # Left click on play button
                         self.game_screen = 0  # Go to AI selection screen

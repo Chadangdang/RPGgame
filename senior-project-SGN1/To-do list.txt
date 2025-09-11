@@ -1,0 +1,4 @@
+- Move the starting cursor to the empty
+- Made UI clickable
+- press esc button to close the game
+- pause and match result pop up menu
