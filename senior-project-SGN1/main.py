@@ -326,6 +326,8 @@ class GameMain:
         self.total_p1_win = 0
         self.total_p2_win = 0
         self._next_map_id_override = None
+        Cursor.state = 5
+        Cursor.selected_action = -1
         if hasattr(self, 'field'):
             Character.removeAllCharacters()
 
