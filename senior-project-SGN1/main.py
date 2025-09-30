@@ -75,14 +75,33 @@ class GameMain:
         self.font_sm = pygame.font.Font('resource/font.ttf', 30)
         self.font_m = pygame.font.Font('resource/font.ttf', 48)
         self.font_l = pygame.font.Font('resource/font.ttf', 96)
+        self.font_end_title = pygame.font.Font('resource/font.ttf', 74)
+        self.font_end_button = pygame.font.Font('resource/font.ttf', 24)
+
+        # --- Endgame popup geometry ---
+        self.endgame_popup_rect = pygame.Rect(243, 151, 794, 420)
+        self.endgame_menu_button_rect = pygame.Rect(342, 416, 166, 56)
+        self.endgame_restart_button_rect = pygame.Rect(558, 416, 166, 56)
+        self.endgame_export_button_rect = pygame.Rect(774, 416, 166, 56)
+        self._endgame_overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        self.endgame_menu_hovered = False
+        self.endgame_restart_hovered = False
+        self.endgame_export_hovered = False
 
         self.GameMaster = GameMaster()
         self.currentMatch = 0
 
+        # --- Match selection history (for restart functionality) ---
+        self.last_team1_ID: int | None = None
+        self.last_team2_ID: int | None = None
+        self.last_map_selection_value: int | None = None
+        self.last_map_generated_id: int | None = None
+        self.last_map_was_random = False
+        self._next_map_id_override: int | None = None
+
         # Pass player turn button
         self.pass_turn_button_rect = pygame.Rect(987, 620, 245, 45)
         self.pass_turn_button_hovered = False
-
         # --- Game Log store ---
         # store tuples: (text, color)
         self.game_log: list[tuple[str, tuple[int, int, int]]] = []
@@ -174,6 +193,174 @@ class GameMain:
         """Helper: current log panel rect (same as in render)."""
         return pygame.Rect(LOG_X, LOG_Y, LOG_W, LOG_H)
 
+    def _extract_field_map_id(self) -> int | None:
+        """Return the numeric map id from the current field, if available."""
+        if not hasattr(self, 'field') or self.field is None:
+            return None
+
+        map_name = getattr(getattr(self.field, 'map', None), 'map_name', '')
+        if not map_name:
+            return None
+
+        digits = ''.join(ch for ch in str(map_name) if ch.isdigit())
+        if digits:
+            try:
+                return int(digits)
+            except ValueError:
+                return None
+        return None
+
+    def _handle_log_event(self, event: pygame.event.Event, geom: dict) -> bool:
+        """Process scroll events for the game log. Returns True if consumed."""
+        if event.type == pygame.MOUSEWHEEL:
+            if geom["log_rect"].collidepoint(pygame.mouse.get_pos()):
+                if event.y > 0:
+                    self.log_scroll = max(0, self.log_scroll - self._log_scroll_step * abs(event.y))
+                elif event.y < 0:
+                    self.log_scroll = min(geom["max_scroll"],
+                                          self.log_scroll + self._log_scroll_step * abs(event.y))
+                return True
+
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            mx, my = event.pos
+            if geom["thumb_rect"].collidepoint(mx, my):
+                self._sb_dragging = True
+                self._sb_drag_offset_y = my - geom["thumb_rect"].y
+                return True
+            if geom["track_rect"].collidepoint(mx, my):
+                if my < geom["thumb_rect"].y:
+                    self.log_scroll = max(0, self.log_scroll - self._log_page_step)
+                elif my > geom["thumb_rect"].bottom:
+                    self.log_scroll = min(geom["max_scroll"], self.log_scroll + self._log_page_step)
+                return True
+
+        if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            if self._sb_dragging:
+                self._sb_dragging = False
+                return True
+
+        if event.type == pygame.MOUSEMOTION and self._sb_dragging:
+            mx, my = event.pos
+            track = geom["track_rect"]
+            max_scroll = geom["max_scroll"]
+            thumb_h = geom["thumb_rect"].height
+
+            new_thumb_y = my - self._sb_drag_offset_y
+            min_y = track.y
+            max_y = track.bottom - thumb_h
+            new_thumb_y = max(min_y, min(max_y, new_thumb_y))
+
+            if max_scroll == 0:
+                self.log_scroll = 0
+            else:
+                t = (new_thumb_y - track.y) / (track.height - thumb_h)
+                self.log_scroll = int(round(t * max_scroll))
+            return True
+
+        return False
+
+    def _is_endgame_popup_active(self) -> bool:
+        return self.game_state in ('win', 'lose')
+
+    def _reset_endgame_hover_states(self) -> None:
+        self.endgame_menu_hovered = False
+        self.endgame_restart_hovered = False
+        self.endgame_export_hovered = False
+
+    def _handle_endgame_event(self, event: pygame.event.Event, geom: dict) -> None:
+        if self._handle_log_event(event, geom):
+            return
+
+        if event.type == pygame.KEYDOWN:
+            if event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_r):
+                self._restart_match_from_popup()
+            elif event.key in (pygame.K_ESCAPE, pygame.K_p):
+                self._return_to_menu()
+            return
+
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.endgame_menu_button_rect.collidepoint(event.pos):
+                self._return_to_menu()
+            elif self.endgame_restart_button_rect.collidepoint(event.pos):
+                self._restart_match_from_popup()
+            elif self.endgame_export_button_rect.collidepoint(event.pos):
+                # Placeholder: export log not implemented yet
+                pass
+
+    def _restart_match_from_popup(self) -> None:
+        if self.last_team1_ID is None or self.last_team2_ID is None:
+            return
+
+        self.team1_ID = self.last_team1_ID
+        self.team2_ID = self.last_team2_ID
+
+        if self.last_map_selection_value is not None:
+            self.map_number = self.last_map_selection_value
+
+        if self.last_map_was_random and self.last_map_generated_id is not None:
+            self._next_map_id_override = self.last_map_generated_id
+        else:
+            self._next_map_id_override = None
+
+        self.game_state = 'selecting start area'
+        self.game_log.clear()
+        self._ai_log_len = 0
+        self.log_scroll = 0
+        self.currentMatch = 0
+        self.total_p1_win = 0
+        self.total_p2_win = 0
+        self._sb_dragging = False
+
+        self.startMatch()
+
+    def _return_to_menu(self) -> None:
+        self.game_screen = 0
+        self.game_state = 'selecting start area'
+        self._sb_dragging = False
+        self._reset_endgame_hover_states()
+        self.pass_turn_button_hovered = False
+        self.game_log.clear()
+        self._ai_log_len = 0
+        self.log_scroll = 0
+        self.currentMatch = 0
+        self.total_p1_win = 0
+        self.total_p2_win = 0
+        self._next_map_id_override = None
+        if hasattr(self, 'field'):
+            Character.removeAllCharacters()
+
+    def _render_endgame_popup(self, geom: dict) -> None:
+        overlay = self._endgame_overlay
+        overlay.fill((0, 0, 0, 140))
+        overlay.fill((0, 0, 0, 0), geom["log_rect"])
+        self.screen.blit(overlay, (0, 0))
+
+        pygame.draw.rect(self.screen, (217, 217, 217), self.endgame_popup_rect)
+        pygame.draw.rect(self.screen, (0, 0, 0), self.endgame_popup_rect, 2)
+
+        title_text = 'P1 WIN!!' if self.game_state == 'win' else 'P2 WIN!!'
+        title_surface = self.font_end_title.render(title_text, False, (0, 0, 0))
+        title_rect = title_surface.get_rect(center=(self.endgame_popup_rect.centerx,
+                                                   self.endgame_popup_rect.y + 100))
+        self.screen.blit(title_surface, title_rect)
+
+        self._draw_endgame_button(self.endgame_menu_button_rect, 'MENU', self.endgame_menu_hovered)
+        self._draw_endgame_button(self.endgame_restart_button_rect, 'RESTART', self.endgame_restart_hovered)
+        self._draw_endgame_button(self.endgame_export_button_rect, 'EXPORT LOG', self.endgame_export_hovered)
+
+    def _draw_endgame_button(self, rect: pygame.Rect, text: str, hovered: bool) -> None:
+        fill_color = (255, 255, 255)
+        border_color = (0, 0, 0)
+        if hovered:
+            fill_color = (245, 245, 245)
+            border_color = (60, 60, 60)
+
+        pygame.draw.rect(self.screen, fill_color, rect)
+        pygame.draw.rect(self.screen, border_color, rect, 2)
+
+        label = self.font_end_button.render(text, False, (0, 0, 0))
+        label_rect = label.get_rect(center=rect.center)
+        self.screen.blit(label, label_rect)
     def screen1init(self):
 
         self.match_limit = AUTO_MATCH_LIMIT # should be changed to input at some point
@@ -222,7 +409,17 @@ class GameMain:
                 print("-Tie breaking Match-")
             return
 
-        if self.map_number == len(self.map_list):
+        map_override = self._next_map_id_override
+        self._next_map_id_override = None
+
+        if map_override is not None:
+            self.field = Field(self.screen,
+                               (BOARD_POS_X, BOARD_POS_Y),
+                               (8, 8),
+                               (640, 640),
+                               rand_map=False,
+                               map_id=map_override)
+        elif self.map_number == len(self.map_list):
             self.field = Field(self.screen,
                                (BOARD_POS_X, BOARD_POS_Y),
                                (8, 8),
@@ -235,7 +432,7 @@ class GameMain:
                                (640, 640),
                                rand_map=False,
                                map_id=self.map_number)
-        
+
         Character.removeAllCharacters()
         
         # for i, pos in enumerate(self.field.player_spawns[:3]):
@@ -261,6 +458,23 @@ class GameMain:
                         (self.field.boxes_width, self.field.boxes_height),
                         (pos[0], pos[1]),
                         "player" + str(i + 1), team=2)
+
+        self.last_team1_ID = self.team1_ID
+        self.last_team2_ID = self.team2_ID
+        self.last_map_selection_value = self.map_number
+
+        if map_override is not None:
+            actual_map_id = map_override
+            map_was_random = True
+        elif self.map_number == len(self.map_list):
+            actual_map_id = self._extract_field_map_id()
+            map_was_random = True
+        else:
+            actual_map_id = self.map_number
+            map_was_random = False
+
+        self.last_map_generated_id = actual_map_id
+        self.last_map_was_random = map_was_random
 
 
         self.GameMaster.setTeams(self.team1_ID, self.team2_ID)
@@ -345,104 +559,58 @@ class GameMain:
                             self.map_number = 0
 
         elif self.game_screen == 1:
-            # cache geometry for this frame
             geom = self._calc_log_geometry()
             self._sb_last_geometry = geom
 
-            # Pass turn button hover
+            endgame_active = self._is_endgame_popup_active()
+
             mouse_pos = pygame.mouse.get_pos()
-            self.pass_turn_button_hovered = self.pass_turn_button_rect.collidepoint(mouse_pos)
+            if endgame_active:
+                self.pass_turn_button_hovered = False
+                self.endgame_menu_hovered = self.endgame_menu_button_rect.collidepoint(mouse_pos)
+                self.endgame_restart_hovered = self.endgame_restart_button_rect.collidepoint(mouse_pos)
+                self.endgame_export_hovered = self.endgame_export_button_rect.collidepoint(mouse_pos)
+            else:
+                self.pass_turn_button_hovered = self.pass_turn_button_rect.collidepoint(mouse_pos)
+                self._reset_endgame_hover_states()
+
             for event in events:
                 if event.type == pygame.QUIT:
                     pygame.quit()
                     sys.exit()
-                
-                # --- Mouse wheel scrolling for the log (only when pointer over the log) ---
-                if event.type == pygame.MOUSEWHEEL:
-                    if geom["log_rect"].collidepoint(pygame.mouse.get_pos()):
-                        # Wheel UP => move toward top (older) -> decrease index
-                        if event.y > 0:
-                            self.log_scroll = max(0, self.log_scroll - self._log_scroll_step * abs(event.y))
-                        # Wheel DOWN => move toward bottom (newer) -> increase index
-                        elif event.y < 0:
-                            self.log_scroll = min(geom["max_scroll"],
-                                                  self.log_scroll + self._log_scroll_step * abs(event.y))
 
-                # --- Scrollbar mouse interactions ---
-                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    mx, my = event.pos
-                    if geom["thumb_rect"].collidepoint(mx, my):
-                        # start dragging the thumb
-                        self._sb_dragging = True
-                        self._sb_drag_offset_y = my - geom["thumb_rect"].y
-                    elif geom["track_rect"].collidepoint(mx, my):
-                        # click on track: page up/down towards click
-                        if my < geom["thumb_rect"].y:
-                            # page up (toward top/older) -> decrease index
-                            self.log_scroll = max(0, self.log_scroll - self._log_page_step)
-                        elif my > geom["thumb_rect"].bottom:
-                            # page down (toward bottom/newer) -> increase index
-                            self.log_scroll = min(geom["max_scroll"], self.log_scroll + self._log_page_step)
-                    elif self.GameMaster.isActiveAIHuman():
-                        if self.pass_turn_button_rect.collidepoint(event.pos):
-                            # Pass the player's turn via button click
-                            self.GameMaster.activeAI.turnFinished = True
-                            Cursor.state = 0
-                            self.field.select_cursor.show = False
-                            self.field.hover_cursor.show = True
+                if endgame_active:
+                    self._handle_endgame_event(event, geom)
+                    continue
 
-                if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-                    self._sb_dragging = False
-
-                if event.type == pygame.MOUSEMOTION and self._sb_dragging:
-                    mx, my = event.pos
-                    track = geom["track_rect"]
-                    max_scroll = geom["max_scroll"]
-                    thumb_h = geom["thumb_rect"].height
-
-                    # compute new thumb y from mouse, clamped to track
-                    new_thumb_y = my - self._sb_drag_offset_y
-                    min_y = track.y
-                    max_y = track.bottom - thumb_h
-                    new_thumb_y = max(min_y, min(max_y, new_thumb_y))
-
-                    # map thumb position to log_scroll (top of track => 0 (oldest), bottom => max_scroll (newest))
-                    if max_scroll == 0:
-                        self.log_scroll = 0
-                    else:
-                        t = (new_thumb_y - track.y) / (track.height - thumb_h)
-                        self.log_scroll = int(round(t * max_scroll))
+                if self._handle_log_event(event, geom):
+                    continue
 
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_1:
                         self.action_delay = 0.1
-                    if event.key == pygame.K_2:
+                    elif event.key == pygame.K_2:
                         self.action_delay = 0.4
-                    if event.key == pygame.K_3:
+                    elif event.key == pygame.K_3:
                         self.action_delay = 0.8
-                    if event.key == pygame.K_r:
-                        if self.game_state == 'win' or self.game_state == 'lose':
-                            self.startMatch()
-                    if event.key in [pygame.K_UP, pygame.K_DOWN, pygame.K_LEFT, pygame.K_RIGHT, pygame.K_z, pygame.K_x]: # Cursor controls
+                    elif event.key in [pygame.K_UP, pygame.K_DOWN, pygame.K_LEFT, pygame.K_RIGHT, pygame.K_z, pygame.K_x]:
                         self.GameMaster.keyInput(event.key)
-                    if event.key == pygame.K_p:
-                        if self.game_state == 'win' or self.game_state == 'lose':
-                            self.game_screen = 0
-                        elif self.GameMaster.isActiveAIHuman():
-                            # Pass the player's turn immediately
+                    elif event.key == pygame.K_p:
+                        if self.GameMaster.isActiveAIHuman():
                             self.GameMaster.activeAI.turnFinished = True
                             Cursor.state = 0
                             self.field.select_cursor.show = False
                             self.field.hover_cursor.show = True
+                    continue
+
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     if event.button == 1 and self.GameMaster.isActiveAIHuman():
                         if self.pass_turn_button_rect.collidepoint(event.pos):
-                            # Pass the player's turn via button click
                             self.GameMaster.activeAI.turnFinished = True
                             Cursor.state = 0
                             self.field.select_cursor.show = False
                             self.field.hover_cursor.show = True
-
+                
                 # if event.type == pygame.KEYDOWN:
                 #     if event.key == pygame.K_p and Cursor.state != 5 and Cursor.state != 6 and self.game_state == 'attacking phase':
                 #         for chara in Character.team1_list:
@@ -1096,20 +1264,6 @@ class GameMain:
             text_rect = delay_text.get_rect(bottomleft=(50, 670))
             self.screen.blit(delay_text, text_rect)
 
-            if self.game_state == 'win':
-                pygame.draw.rect(self.screen, WHITE, pygame.Rect(WIDTH // 2 - 300, HEIGHT // 2 - 90, 600, 180))
-                pygame.draw.rect(self.screen, BLACK, pygame.Rect(WIDTH // 2 - 300, HEIGHT // 2 - 90, 600, 180), 4)
-                round_text = self.font_l.render(f"P1 Win!!", False, (0, 0, 0))
-                text_rect = round_text.get_rect(center=(WIDTH // 2, HEIGHT // 2))
-                self.screen.blit(round_text, text_rect)
-
-            if self.game_state == 'lose':
-                pygame.draw.rect(self.screen, WHITE, pygame.Rect(WIDTH // 2 - 300, HEIGHT // 2 - 90, 600, 180))
-                pygame.draw.rect(self.screen, BLACK, pygame.Rect(WIDTH // 2 - 300, HEIGHT // 2 - 90, 600, 180), 4)
-                round_text = self.font_l.render(f"P2 Win!!", False, (0, 0, 0))
-                text_rect = round_text.get_rect(center=(WIDTH // 2, HEIGHT // 2))
-                self.screen.blit(round_text, text_rect)
-
             # ----------------- Game Log Panel (with SCROLLBAR) -----------------
             geom = self._calc_log_geometry()
 
@@ -1160,6 +1314,9 @@ class GameMain:
             pygame.draw.rect(self.screen, UI_BORDER, geom["thumb_rect"], 1, border_radius=5)
             # -----------------------------------------------------------------------
 
+            if self._is_endgame_popup_active():
+                self._render_endgame_popup(geom)
+                
 if __name__ == '__main__':
     main = GameMain()
     clock = pygame.time.Clock()
