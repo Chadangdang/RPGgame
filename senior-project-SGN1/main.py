@@ -127,6 +127,8 @@ class GameMain:
         self._ai_pending_lines: dict[int, list[str]] = {}
         self._char_snapshots: dict[int, dict] = {}
         self._ai_type_labels = AI_SELECTION_LABELS
+        self._pending_ko_sources: dict[int, dict] = {}
+        self._pending_ko_sources_by_name: dict[tuple[str, int], dict] = {}
 
         # --- Log panel style (header height kept) ---
         self._log_header_h = 28
@@ -228,6 +230,29 @@ class GameMain:
             team = kwargs.get("team")
             tag = "P1" if team == 1 else "P2"
             message = "Pass turn"
+        elif event == "ko":
+            team = kwargs.get("team")
+            tag = "P1" if team == 1 else "P2"
+            actor = kwargs.get("actor", "")
+            location = board_label(kwargs.get("location"))
+            hp_max = kwargs.get("hp_max", 0)
+            by_actor = kwargs.get("by_actor")
+            by_action = kwargs.get("by_action")
+            message_parts = [f"{actor} is KO"]
+            if location:
+                message_parts[-1] += f" at {location}"
+            detail_parts: list[str] = []
+            if by_actor and by_action:
+                detail_parts.append(f"by {by_actor} using \"{by_action}\"")
+            elif by_actor:
+                detail_parts.append(f"by {by_actor}")
+            elif by_action:
+                detail_parts.append(f"by \"{by_action}\"")
+            if detail_parts:
+                message_parts.append(" ".join(detail_parts))
+            if hp_max:
+                message_parts.append(f"(HP 0/{hp_max})")
+            message = " ".join(part for part in message_parts if part)
         elif event == "match_over":
             tag = "GAME"
             message = ("Match over - {winner} win ({p1}-{p2})".format(
@@ -364,32 +389,39 @@ class GameMain:
                         amount = 0
 
                     target_id = None
+                    target_team = None
                     grid_coords = parse_grid(grid_label)
                     if grid_coords is not None:
                         for cid, data in current_state.items():
                             if data["grid"] == grid_coords:
                                 target_id = cid
+                                target_team = data.get("team")
                                 break
                         if target_id is None:
                             for cid, data in prev_state.items():
                                 if data["grid"] == grid_coords:
                                     target_id = cid
+                                    target_team = data.get("team")
                                     break
                     if target_id is None:
                         for cid, data in current_state.items():
                             if data["name"] == target_name:
                                 target_id = cid
+                                target_team = data.get("team")
                                 break
                     hp_cur = 0
                     hp_max = 0
                     if target_id is not None:
-                        hp_cur = current_state.get(target_id, prev_state.get(target_id, {})).get("hp", 0)
-                        hp_max = current_state.get(target_id, prev_state.get(target_id, {})).get("max_hp", 0)
+                        combined = current_state.get(target_id, prev_state.get(target_id, {}))
+                        hp_cur = combined.get("hp", 0)
+                        hp_max = combined.get("max_hp", 0)
+                        target_team = combined.get("team", target_team)
                     else:
                         for cid, data in prev_state.items():
                             if data["name"] == target_name:
                                 hp_cur = max(0, data["hp"] - amount)
                                 hp_max = data["max_hp"]
+                                target_team = data.get("team")
                                 break
 
                     if amount >= 0:
@@ -403,6 +435,16 @@ class GameMain:
                             hp_cur=hp_cur,
                             hp_max=hp_max
                         )
+                        if target_id is not None:
+                            self._pending_ko_sources[target_id] = {
+                                "by_actor": actor,
+                                "by_action": action_name
+                            }
+                        elif target_team is not None:
+                            self._pending_ko_sources_by_name[(target_name, target_team)] = {
+                                "by_actor": actor,
+                                "by_action": action_name
+                            }
                     else:
                         self.log_event(
                             "heal",
@@ -421,6 +463,38 @@ class GameMain:
         for team in list(self._ai_pending_lines.keys()):
             if not self._ai_pending_lines[team]:
                 del self._ai_pending_lines[team]
+
+    def _process_character_outcomes(self, prev: dict[int, dict], current: dict[int, dict]) -> None:
+        for char_id, prev_data in prev.items():
+            prev_hp = prev_data.get("hp", 0)
+            if prev_hp <= 0:
+                continue
+            current_data = current.get(char_id)
+            ko_detected = False
+            location = prev_data.get("grid")
+            hp_max = prev_data.get("max_hp", 0)
+            if current_data is None:
+                ko_detected = True
+            else:
+                cur_hp = current_data.get("hp", 0)
+                if cur_hp <= 0:
+                    ko_detected = True
+                    location = current_data.get("grid") or location
+                    hp_max = current_data.get("max_hp", hp_max)
+            if not ko_detected:
+                continue
+            source = self._pending_ko_sources.pop(char_id, None)
+            if source is None:
+                key = (prev_data.get("name", ""), prev_data.get("team"))
+                source = self._pending_ko_sources_by_name.pop(key, None)
+            self.log_event(
+                "ko",
+                team=prev_data.get("team"),
+                actor=prev_data.get("name", ""),
+                location=location,
+                hp_max=hp_max,
+                **(source or {})
+            )
 
     # --------- geometry helper used by render & input ----------
     def _calc_log_geometry(self):
@@ -596,6 +670,8 @@ class GameMain:
         self.game_log.clear()
         self._ai_log_len = {}
         self._ai_pending_lines.clear()
+        self._pending_ko_sources = {}
+        self._pending_ko_sources_by_name = {}
         self.log_scroll = 0
         self.currentMatch = 0
         self.total_p1_win = 0
@@ -617,6 +693,8 @@ class GameMain:
         self.game_log.clear()
         self._ai_log_len = {}
         self._ai_pending_lines.clear()
+        self._pending_ko_sources = {}
+        self._pending_ko_sources_by_name = {}
         self.log_scroll = 0
         self.currentMatch = 0
         self.total_p1_win = 0
@@ -697,6 +775,8 @@ class GameMain:
         self.currentMatch += 1
         self._ai_log_len = {}
         self._ai_pending_lines.clear()
+        self._pending_ko_sources = {}
+        self._pending_ko_sources_by_name = {}
         self.p1_round_wins = 0
         self.p2_round_wins = 0
 
@@ -1283,6 +1363,7 @@ class GameMain:
             if prev_state or current_state:
                 self._process_character_movements(prev_state, current_state)
                 self._process_ai_logs(prev_state, current_state)
+                self._process_character_outcomes(prev_state, current_state)
             self._char_snapshots = current_state
 
             # Cursor.state = self.field.update(dt, events, Cursor.state)
