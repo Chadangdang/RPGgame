@@ -94,6 +94,17 @@ class GameMain:
         self.font_l = pygame.font.Font('resource/font.ttf', 96)
         self.font_end_title = pygame.font.Font('resource/font.ttf', 74)
         self.font_end_button = pygame.font.Font('resource/font.ttf', 24)
+        self.font_menu_label = pygame.font.Font('resource/font.ttf', 26)
+
+        # Match limit slider geometry/state
+        self.match_limit = AUTO_MATCH_LIMIT  # default slider value (1..10)
+        self._match_limit_min = 1
+        self._match_limit_max = 10
+        self._match_limit_box_rect = pygame.Rect(224, 945, 58, 25)
+        self._match_limit_slider_rect = pygame.Rect(292, 945, 220, 25)
+        self._match_limit_knob_width = 16
+        self._match_limit_knob_height = 16
+        self._match_limit_slider_dragging = False
 
         # --- Endgame popup geometry ---
         self.endgame_popup_rect = pygame.Rect(243, 151, 794, 420)
@@ -743,7 +754,7 @@ class GameMain:
         self.screen.blit(label, label_rect)
     def screen1init(self):
 
-        self.match_limit = AUTO_MATCH_LIMIT # should be changed to input at some point
+        self.match_limit = max(self._match_limit_min, min(self._match_limit_max, self.match_limit))
 
         AI_types = ('Player Input', 'Perfect Play AI', 'Random AI', 'Personality Cores AI', 'Disable AI') # not 'Independent Action AI' anymore
         self.team1_ID = self.p1_sel_cursor.grid[0]
@@ -906,7 +917,7 @@ class GameMain:
         if self.game_screen == -1:      # Start screen
             mouse_pos = pygame.mouse.get_pos()
             self.play_button_hovered = self.play_button_rect.collidepoint(mouse_pos)
-            
+
             for event in events:
                 if event.type == pygame.QUIT:
                     pygame.quit()
@@ -948,6 +959,16 @@ class GameMain:
                         self.map_number += 1
                         if self.map_number > len(self.map_list):
                             self.map_number = 0
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    if event.button == 1 and self._match_limit_slider_rect.collidepoint(event.pos):
+                        self._match_limit_slider_dragging = True
+                        self.match_limit = self._match_limit_value_from_pos(event.pos[0])
+                if event.type == pygame.MOUSEBUTTONUP:
+                    if event.button == 1:
+                        self._match_limit_slider_dragging = False
+                if event.type == pygame.MOUSEMOTION:
+                    if self._match_limit_slider_dragging:
+                        self.match_limit = self._match_limit_value_from_pos(event.pos[0])
 
         elif self.game_screen == 1:
             geom = self._calc_log_geometry()
@@ -1368,6 +1389,23 @@ class GameMain:
 
             # Cursor.state = self.field.update(dt, events, Cursor.state)
 
+    def _match_limit_position_from_value(self, value: int) -> int:
+        value = max(self._match_limit_min, min(self._match_limit_max, value))
+        span = self._match_limit_slider_rect.width - self._match_limit_knob_width
+        if span <= 0 or self._match_limit_max == self._match_limit_min:
+            return 0
+        ratio = (value - self._match_limit_min) / (self._match_limit_max - self._match_limit_min)
+        return int(round(ratio * span))
+
+    def _match_limit_value_from_pos(self, pos_x: float) -> int:
+        span = self._match_limit_slider_rect.width - self._match_limit_knob_width
+        if span <= 0 or self._match_limit_max == self._match_limit_min:
+            return self._match_limit_min
+        ratio = (pos_x - self._match_limit_slider_rect.x - self._match_limit_knob_width / 2) / span
+        ratio = max(0.0, min(1.0, ratio))
+        value = round(ratio * (self._match_limit_max - self._match_limit_min)) + self._match_limit_min
+        return int(max(self._match_limit_min, min(self._match_limit_max, value)))
+
     def render(self) -> None:
         if self.game_screen == -1:      # Start screen
             # Draw background
@@ -1467,9 +1505,57 @@ class GameMain:
             mcy = 200 + self.menu_cursor.grid[0] * 90
             self.menu_cursor.render((mcx, mcy))
 
-            auto_text = self.font_s.render(f"Auto : {self.isAuto}", False, (0, 0, 0))
-            text_rect = auto_text.get_rect(bottomleft=(40, 700))
-            self.screen.blit(auto_text, text_rect)
+            auto_label_surface = self.font_menu_label.render("Auto:", False, (0, 0, 0))
+            auto_label_rect = auto_label_surface.get_rect(topleft=(64, 880))
+            self.screen.blit(auto_label_surface, auto_label_rect)
+
+            auto_value_text = "True" if self.isAuto else "False"
+            if self.isAuto:
+                auto_value_surface = self.font_menu_label.render(
+                    auto_value_text,
+                    False,
+                    (0, 197, 7),
+                )
+            else:
+                auto_value_surface = self.font_menu_label.render(
+                    auto_value_text,
+                    False,
+                    (200, 0, 0),
+                )
+
+            auto_value_rect = auto_value_surface.get_rect()
+            auto_value_rect.topleft = (auto_label_rect.right + 8, 880)
+
+            self.screen.blit(auto_value_surface, auto_value_rect)
+
+            match_label = self.font_menu_label.render("Match limit:", False, (0, 0, 0))
+            self.screen.blit(match_label, (64, 945))
+
+            pygame.draw.rect(self.screen, (245, 245, 245), self._match_limit_box_rect)
+            pygame.draw.rect(self.screen, (0, 0, 0), self._match_limit_box_rect, 1)
+
+            match_value_surface = self.font_s.render(str(self.match_limit), False, (0, 0, 0))
+            value_rect = match_value_surface.get_rect(center=self._match_limit_box_rect.center)
+            self.screen.blit(match_value_surface, value_rect)
+
+            track_rect = pygame.Rect(
+                self._match_limit_slider_rect.x + 2,
+                self._match_limit_slider_rect.y + (self._match_limit_slider_rect.height - 4) // 2,
+                self._match_limit_slider_rect.width - 4,
+                4,
+            )
+            pygame.draw.rect(self.screen, (245, 245, 245), track_rect)
+
+            knob_left = self._match_limit_slider_rect.x + self._match_limit_position_from_value(self.match_limit)
+            knob_top = self._match_limit_slider_rect.y + (self._match_limit_slider_rect.height - self._match_limit_knob_height) // 2
+            knob_rect = pygame.Rect(
+                knob_left,
+                knob_top,
+                self._match_limit_knob_width,
+                self._match_limit_knob_height,
+            )
+            pygame.draw.rect(self.screen, (255, 255, 255), knob_rect)
+            pygame.draw.rect(self.screen, (0, 0, 0), knob_rect, 1)
 
             if self.map_number == len(self.map_list):
                 map_text = self.font_s.render(f"Map : Random", False, (0, 0, 0))
