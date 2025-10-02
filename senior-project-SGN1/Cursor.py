@@ -6,10 +6,10 @@ class Cursor:
     state = 0
     selected_action = -1
 
-    image1 = pygame.image.load('./resource/element/cursor1p20.png')
-    image2 = pygame.image.load('./resource/element/cursor2p20.png')
-    image3 = pygame.image.load('./resource/element/cursor-1sp20-p5.png')
-    image4 = pygame.image.load('./resource/element/cursor-2sp20-p5.png')
+    image1 = pygame.image.load('./resource/cursor/cursor1p20.png')
+    image2 = pygame.image.load('./resource/cursor/cursor2p20.png')
+    image3 = pygame.image.load('./resource/cursor/cursor-1sp20-p5.png')
+    image4 = pygame.image.load('./resource/cursor/cursor-2sp20-p5.png')
 
     @staticmethod
     def gridBounding(grid: tuple[int, int], bound: tuple[int, int]) -> tuple[int, int]:
