@@ -11,8 +11,16 @@ import AI
 from GameMaster import GameMaster
 from MapData import MapData
 
+AI_SELECTION_LABELS = (
+    'Player Input',
+    'Perfect Play AI',
+    'Random AI',
+    'Personality Cores AI',
+    'Disable AI'
+)
+
 # === Board placement (top-left of the 640x640 grid) ===
-# Lower this to move the whole board (and its A–H / 1–8 labels) higher on screen.
+# Lower this to move the whole board (and its A-H / 1-8 labels) higher on screen.
 BOARD_POS_X = WIDTH // 2 - 320
 BOARD_POS_Y = 40
 
@@ -27,6 +35,12 @@ UI_PANEL  = (251, 247, 242)   # panel fill
 UI_HEADER = (233, 226, 214)   # header strip
 UI_BORDER = (30, 30, 30)      # dark border
 UI_TEXT   = (20, 20, 20)      # text
+
+LOG_COLOR_GAME    = (20, 20, 20)      # black
+LOG_COLOR_ROUND   = (255, 165, 0)     # orange
+LOG_COLOR_SUMMARY = (22, 138, 36)     # green
+LOG_COLOR_P1      = (54, 92, 168)     # blue
+LOG_COLOR_P2      = (178, 64, 64)     # red
 
 # --- Scrollbar colors ---
 SB_TRACK       = (220, 213, 200)
@@ -68,6 +82,9 @@ class GameMain:
 
         self.total_p1_win = 0
         self.total_p2_win = 0
+        self.p1_round_wins = 0
+        self.p2_round_wins = 0
+        self._current_map_label = ''
 
         # Fonts
         self.font_ss = pygame.font.Font('resource/font.ttf', 14)
@@ -106,7 +123,10 @@ class GameMain:
         # store tuples: (text, color)
         self.game_log: list[tuple[str, tuple[int, int, int]]] = []
         # used to mirror newly-added lines from activeAI.action_log
-        self._ai_log_len = 0
+        self._ai_log_len: dict[object, int] = {}
+        self._ai_pending_lines: dict[int, list[str]] = {}
+        self._char_snapshots: dict[int, dict] = {}
+        self._ai_type_labels = AI_SELECTION_LABELS
 
         # --- Log panel style (header height kept) ---
         self._log_header_h = 28
@@ -115,8 +135,8 @@ class GameMain:
         self._log_page_step = 8     # lines per page jump
 
         # --- Log scrolling state ---
-        # Now: 0 means show from the very first line (oldest) at top.
-        # Increase this to scroll down to newer content.
+        # 0 shows the newest entry at the top.
+        # Increase this to scroll down to older content.
         self.log_scroll = 0
 
         # --- Scrollbar interaction state ---
@@ -127,10 +147,280 @@ class GameMain:
     # --------- logging helper ----------
     def log(self, text: str, color=(0, 0, 0)) -> None:
         """Append a line to the game log."""
-        self.game_log.append((text, color))
+        self.game_log.insert(0, (text, color))
         if len(self.game_log) > 500:  # prevent unbounded growth
-            self.game_log.pop(0)
+            self.game_log.pop()
         # We do NOT auto-jump to bottom; view stays where the user left it.
+
+    def log_event(self, event: str, **kwargs) -> None:
+        """Build and append a formatted log entry for a structured event."""
+        tag_labels = {
+            "GAME": "GAME : ",
+            "ROUND": "ROUND : ",
+            "P1": "P1 : ",
+            "P2": "P2 : ",
+            "SUMMARY": "SUMMARY : "
+        }
+
+        def tag_color(tag: str) -> tuple[int, int, int]:
+            return {
+                "GAME": LOG_COLOR_GAME,
+                "ROUND": LOG_COLOR_ROUND,
+                "SUMMARY": LOG_COLOR_SUMMARY,
+                "P1": LOG_COLOR_P1,
+                "P2": LOG_COLOR_P2,
+            }.get(tag, UI_TEXT)
+
+        def board_label(grid: tuple[int, int] | None) -> str:
+            if grid is None:
+                return ""
+            row, col = grid
+            return f"{chr(ord('A') + col)}{row + 1}"
+
+        tag = "GAME"
+        message = ""
+
+        if event == "match_start":
+            tag = "GAME"
+            message = ("Match {match} starts   Map: {map_label}   P1: {ai1}   P2: {ai2}".format(
+                match=kwargs.get("match"),
+                map_label=kwargs.get("map_label", ""),
+                ai1=kwargs.get("ai1", ""),
+                ai2=kwargs.get("ai2", "")
+            ))
+        elif event == "round_begin":
+            tag = "ROUND"
+            message = f"Round {kwargs.get('round')} begins"
+        elif event == "round_end":
+            tag = "ROUND"
+            message = f"Round {kwargs.get('round')} ends"
+        elif event == "move":
+            team = kwargs.get("team")
+            tag = "P1" if team == 1 else "P2"
+            actor = kwargs.get("actor", "")
+            start = board_label(kwargs.get("start"))
+            end = board_label(kwargs.get("end"))
+            distance = kwargs.get("distance", 0)
+            message = f"{actor} moves {start} -> {end} ({distance} tiles)"
+        elif event == "attack":
+            team = kwargs.get("team")
+            tag = "P1" if team == 1 else "P2"
+            actor = kwargs.get("actor", "")
+            target = kwargs.get("target", "")
+            action = kwargs.get("action", "")
+            amount = kwargs.get("amount", 0)
+            cur = kwargs.get("hp_cur", 0)
+            max_hp = kwargs.get("hp_max", 0)
+            message = (f"{actor} attacks {target} with \"{action}\" - hit for {amount}"
+                       f" (HP {cur}/{max_hp})")
+        elif event == "heal":
+            team = kwargs.get("team")
+            tag = "P1" if team == 1 else "P2"
+            actor = kwargs.get("actor", "")
+            target = kwargs.get("target", "")
+            action = kwargs.get("action", "")
+            amount = kwargs.get("amount", 0)
+            cur = kwargs.get("hp_cur", 0)
+            max_hp = kwargs.get("hp_max", 0)
+            message = (f"{actor} uses \"{action}\" on {target} - +{amount}"
+                       f" (HP {cur}/{max_hp})")
+        elif event == "pass":
+            team = kwargs.get("team")
+            tag = "P1" if team == 1 else "P2"
+            message = "Pass turn"
+        elif event == "match_over":
+            tag = "GAME"
+            message = ("Match over - {winner} win ({p1}-{p2})".format(
+                winner=kwargs.get("winner", ""),
+                p1=kwargs.get("p1_rounds", 0),
+                p2=kwargs.get("p2_rounds", 0)
+            ))
+        elif event == "summary_match":
+            tag = "SUMMARY"
+            message = ("Match {match}   Map: {map_label}".format(
+                match=kwargs.get("match"),
+                map_label=kwargs.get("map_label", "")
+            ))
+        elif event == "summary_result":
+            tag = "SUMMARY"
+            message = ("Result - P{winner} win ({p1}-{p2})".format(
+                winner=kwargs.get("winner", ""),
+                p1=kwargs.get("p1_rounds", 0),
+                p2=kwargs.get("p2_rounds", 0)
+            ))
+        elif event == "summary_series":
+            tag = "SUMMARY"
+            message = ("Series - P1 matches={p1}   P2 matches={p2}".format(
+                p1=kwargs.get("p1_matches", 0),
+                p2=kwargs.get("p2_matches", 0)
+            ))
+        else:
+            message = kwargs.get("message", "")
+
+        label = tag_labels.get(tag, "")
+        self.log(f"{label}{message}", tag_color(tag))
+
+    def _init_character_snapshots(self) -> None:
+        self._char_snapshots: dict[int, dict] = {}
+        for chara in Character.team1_list + Character.team2_list:
+            self._char_snapshots[chara.id] = {
+                "grid": chara.grid,
+                "hp": chara.template.get("curHP", 0),
+                "max_hp": chara.template.get("maxHP", 0),
+                "name": chara.template.get("display_name", ""),
+                "team": 1 if chara in Character.team1_list else 2
+            }
+
+    def _capture_character_state(self) -> dict[int, dict]:
+        state: dict[int, dict] = {}
+        for chara in Character.team1_list + Character.team2_list:
+            state[chara.id] = {
+                "grid": chara.grid,
+                "hp": chara.template.get("curHP", 0),
+                "max_hp": chara.template.get("maxHP", 0),
+                "name": chara.template.get("display_name", ""),
+                "team": 1 if chara in Character.team1_list else 2
+            }
+        return state
+
+    def _process_character_movements(self, prev: dict[int, dict], current: dict[int, dict]) -> None:
+        for char_id, data in current.items():
+            if char_id in prev:
+                prev_data = prev[char_id]
+                if prev_data["grid"] != data["grid"]:
+                    distance = abs(prev_data["grid"][0] - data["grid"][0]) + \
+                               abs(prev_data["grid"][1] - data["grid"][1])
+                    self.log_event(
+                        "move",
+                        team=prev_data["team"],
+                        actor=data["name"],
+                        start=prev_data["grid"],
+                        end=data["grid"],
+                        distance=distance
+                    )
+
+    def _process_ai_logs(self, prev_state: dict[int, dict], current_state: dict[int, dict]) -> None:
+        ai_objects = []
+        if hasattr(self.GameMaster, "team1"):
+            ai_objects.append(self.GameMaster.team1)
+        if hasattr(self.GameMaster, "team2"):
+            ai_objects.append(self.GameMaster.team2)
+
+        for ai in ai_objects:
+            log = getattr(ai, "action_log", None)
+            if not isinstance(log, list):
+                continue
+            prev_len = self._ai_log_len.get(ai, 0)
+            if len(log) > prev_len:
+                new_lines = log[prev_len:]
+                self._ai_log_len[ai] = len(log)
+                queue = self._ai_pending_lines.setdefault(getattr(ai, "team", 0), [])
+                queue.extend(new_lines)
+
+        def parse_grid(label: str) -> tuple[int, int] | None:
+            if not label:
+                return None
+            col_char = label[0].lower()
+            if not ('a' <= col_char <= 'z'):
+                return None
+            try:
+                row_num = int(label[1:])
+            except ValueError:
+                return None
+            col_idx = ord(col_char) - ord('a')
+            row_idx = GRID_ROWS - row_num
+            if 0 <= row_idx < GRID_ROWS and 0 <= col_idx < GRID_COLS:
+                return (row_idx, col_idx)
+            return None
+
+        for team, queue in self._ai_pending_lines.items():
+            idx = 0
+            while idx < len(queue):
+                line = queue[idx]
+                if "moves to grid" in line:
+                    queue.pop(idx)
+                    continue
+                if "passes" in line:
+                    queue.pop(idx)
+                    self.log_event("pass", team=team)
+                    continue
+                if "uses" in line:
+                    if len(queue) - idx < 3:
+                        break
+                    first = queue.pop(idx)
+                    second = queue.pop(idx)
+                    third = queue.pop(idx)
+                    actor, _, action_name = first.partition(" uses ")
+                    action_name = action_name.strip()
+                    target_info = second.replace("Target:", "").strip()
+                    grid_label = ''
+                    if '(' in target_info and target_info.endswith(')'):
+                        grid_label = target_info[target_info.rfind('(') + 1:-1]
+                    target_name = target_info.split(" (", 1)[0].strip()
+                    amount_str = third.replace("Result:", "").replace("damage", "").strip()
+                    try:
+                        amount = int(float(amount_str))
+                    except ValueError:
+                        amount = 0
+
+                    target_id = None
+                    grid_coords = parse_grid(grid_label)
+                    if grid_coords is not None:
+                        for cid, data in current_state.items():
+                            if data["grid"] == grid_coords:
+                                target_id = cid
+                                break
+                        if target_id is None:
+                            for cid, data in prev_state.items():
+                                if data["grid"] == grid_coords:
+                                    target_id = cid
+                                    break
+                    if target_id is None:
+                        for cid, data in current_state.items():
+                            if data["name"] == target_name:
+                                target_id = cid
+                                break
+                    hp_cur = 0
+                    hp_max = 0
+                    if target_id is not None:
+                        hp_cur = current_state.get(target_id, prev_state.get(target_id, {})).get("hp", 0)
+                        hp_max = current_state.get(target_id, prev_state.get(target_id, {})).get("max_hp", 0)
+                    else:
+                        for cid, data in prev_state.items():
+                            if data["name"] == target_name:
+                                hp_cur = max(0, data["hp"] - amount)
+                                hp_max = data["max_hp"]
+                                break
+
+                    if amount >= 0:
+                        self.log_event(
+                            "attack",
+                            team=team,
+                            actor=actor,
+                            target=target_name,
+                            action=action_name,
+                            amount=amount,
+                            hp_cur=hp_cur,
+                            hp_max=hp_max
+                        )
+                    else:
+                        self.log_event(
+                            "heal",
+                            team=team,
+                            actor=actor,
+                            target=target_name,
+                            action=action_name,
+                            amount=abs(amount),
+                            hp_cur=hp_cur,
+                            hp_max=hp_max
+                        )
+                    continue
+                idx += 1
+
+        # Remove consumed queues to avoid growth
+        for team in list(self._ai_pending_lines.keys()):
+            if not self._ai_pending_lines[team]:
+                del self._ai_pending_lines[team]
 
     # --------- geometry helper used by render & input ----------
     def _calc_log_geometry(self):
@@ -304,11 +594,16 @@ class GameMain:
 
         self.game_state = 'selecting start area'
         self.game_log.clear()
-        self._ai_log_len = 0
+        self._ai_log_len = {}
+        self._ai_pending_lines.clear()
         self.log_scroll = 0
         self.currentMatch = 0
         self.total_p1_win = 0
         self.total_p2_win = 0
+        self.p1_round_wins = 0
+        self.p2_round_wins = 0
+        self._current_map_label = ''
+        self._char_snapshots = {}
         self._sb_dragging = False
 
         self.startMatch()
@@ -320,11 +615,16 @@ class GameMain:
         self._reset_endgame_hover_states()
         self.pass_turn_button_hovered = False
         self.game_log.clear()
-        self._ai_log_len = 0
+        self._ai_log_len = {}
+        self._ai_pending_lines.clear()
         self.log_scroll = 0
         self.currentMatch = 0
         self.total_p1_win = 0
         self.total_p2_win = 0
+        self.p1_round_wins = 0
+        self.p2_round_wins = 0
+        self._current_map_label = ''
+        self._char_snapshots = {}
         self._next_map_id_override = None
         Cursor.state = 5
         Cursor.selected_action = -1
@@ -395,10 +695,14 @@ class GameMain:
 
     def startMatch(self) -> None:
         self.currentMatch += 1
-        
-        # add a headline in the log when a game starts
-        self.log(f"Game {self.currentMatch} starts", UI_TEXT)
-        
+        self._ai_log_len = {}
+        self._ai_pending_lines.clear()
+        self.p1_round_wins = 0
+        self.p2_round_wins = 0
+
+        ai1_name = self._ai_type_labels[self.team1_ID] if 0 <= self.team1_ID < len(self._ai_type_labels) else 'Unknown'
+        ai2_name = self._ai_type_labels[self.team2_ID] if 0 <= self.team2_ID < len(self._ai_type_labels) else 'Unknown'
+
         if self.isAuto and self.currentMatch > self.match_limit:
             print("Auto mode completed after " + str(self.match_limit) + " matches.")
             print("Player 1: " + str(self.total_p1_win) + " wins")
@@ -506,13 +810,18 @@ class GameMain:
         else:
             self.action_delay = 0.8
 
-        # new round headline
-        self.log(f"Round {self.round} begins", UI_TEXT)
-        self._ai_log_len = 0  # reset mirror of AI log this match
-        # Start at very top (oldest first visible)
+        map_label = str(getattr(getattr(self.field, 'map', None), 'map_name', ''))
+        if not map_label:
+            map_label = 'Unknown'
+        self._current_map_label = map_label
+
+        self.log_event('match_start', match=self.currentMatch, map_label=map_label, ai1=ai1_name, ai2=ai2_name)
+        self.log_event('round_begin', round=self.round)
+        self._init_character_snapshots()
+        # Start at very top (newest first visible)
         self.log_scroll = 0
 
-        
+
     def update(self, dt: float, events: list[pygame.event.Event]) -> None:
         if self.game_screen == -1:      # Start screen
             mouse_pos = pygame.mouse.get_pos()
@@ -600,6 +909,7 @@ class GameMain:
                     elif event.key == pygame.K_p:
                         if self.GameMaster.isActiveAIHuman():
                             self.GameMaster.activeAI.turnFinished = True
+                            self.log_event('pass', team=getattr(self.GameMaster.activeAI, 'team', 1))
                             Cursor.state = 0
                             self.field.select_cursor.show = False
                             self.field.hover_cursor.show = True
@@ -609,6 +919,7 @@ class GameMain:
                     if event.button == 1 and self.GameMaster.isActiveAIHuman():
                         if self.pass_turn_button_rect.collidepoint(event.pos):
                             self.GameMaster.activeAI.turnFinished = True
+                            self.log_event('pass', team=getattr(self.GameMaster.activeAI, 'team', 1))
                             Cursor.state = 0
                             self.field.select_cursor.show = False
                             self.field.hover_cursor.show = True
@@ -892,6 +1203,7 @@ class GameMain:
                     # self.game_state = 'finish enemy action'
 
                     if self.GameMaster.roundFinished:
+                        self.log_event('round_end', round=self.round)
                         # Check win condition
                         team1_win_count = 0
                         team2_win_count = 0
@@ -901,42 +1213,63 @@ class GameMain:
                         for enemy in Character.team2_list:
                             if self.field.boxes[enemy.grid[0]][enemy.grid[1]].terrain == 3:
                                 team2_win_count += 1
+
+                        match_winner = 0
+                        next_round = False
+
                         if team1_win_count > team2_win_count:
+                            self.p1_round_wins += 1
                             if self.p1_dom_count == 0:
                                 self.p1_dom_count = 1
                                 self.p2_dom_count = 0
+                                next_round = True
                             elif self.p1_dom_count == 1:
-                                if not self.isAuto:
-                                    self.game_state = 'win'
-                                else:
-                                    self.total_p1_win += 1
-                                    print("Match " + str(self.currentMatch) + " result: Player 1 wins")
-                                    self.startMatch()
+                                match_winner = 1
                             else:
                                 print('There is a problem with dominance check')
                         elif team2_win_count > team1_win_count:
+                            self.p2_round_wins += 1
                             if self.p2_dom_count == 0:
                                 self.p2_dom_count = 1
                                 self.p1_dom_count = 0
+                                next_round = True
                             elif self.p2_dom_count == 1:
-                                if not self.isAuto:
-                                    self.game_state = 'lose'
-                                else:
-                                    self.total_p2_win += 1
-                                    print("Match " + str(self.currentMatch) + " result: Player 2 wins")
-                                    self.startMatch()
+                                match_winner = 2
                             else:
                                 print('There is a problem with dominance check')
-                        # elif self.game_state == 'enemy action' and not Character.team1_list:
-                        #     self.game_state = 'lose'
                         else:
+                            next_round = True
+                            self.p1_dom_count = 0  # remove these 2 lines may cause a bug
+                            self.p2_dom_count = 0  # but it may be a good feature
+
+                        if match_winner == 0 and next_round:
                             self.round += 1
                             self.game_state = 'show round'
                             self.field.hover_cursor.show = True
-                            self.p1_dom_count = 0  # remove these 2 lines may cause a bug
-                            self.p2_dom_count = 0  # but it may be a good feature
-                            # log new round headline
-                            self.log(f"Round {self.round} begins", UI_TEXT)
+                            self.log_event('round_begin', round=self.round)
+
+                        if match_winner == 1:
+                            self.total_p1_win += 1
+                            self.log_event('match_over', winner='P1', p1_rounds=self.p1_round_wins, p2_rounds=self.p2_round_wins)
+                            self.log_event('summary_match', match=self.currentMatch, map_label=self._current_map_label)
+                            self.log_event('summary_result', winner=1, p1_rounds=self.p1_round_wins, p2_rounds=self.p2_round_wins)
+                            self.log_event('summary_series', p1_matches=self.total_p1_win, p2_matches=self.total_p2_win)
+                            if self.isAuto:
+                                print("Match " + str(self.currentMatch) + " result: Player 1 wins")
+                                self.startMatch()
+                                return
+                            self.game_state = 'win'
+                        elif match_winner == 2:
+                            self.total_p2_win += 1
+                            self.log_event('match_over', winner='P2', p1_rounds=self.p1_round_wins, p2_rounds=self.p2_round_wins)
+                            self.log_event('summary_match', match=self.currentMatch, map_label=self._current_map_label)
+                            self.log_event('summary_result', winner=2, p1_rounds=self.p1_round_wins, p2_rounds=self.p2_round_wins)
+                            self.log_event('summary_series', p1_matches=self.total_p1_win, p2_matches=self.total_p2_win)
+                            if self.isAuto:
+                                print("Match " + str(self.currentMatch) + " result: Player 2 wins")
+                                self.startMatch()
+                                return
+                            self.game_state = 'lose'
 
                         self.number_action = -1
                         for chara in Character.team1_list + Character.team2_list:
@@ -945,15 +1278,12 @@ class GameMain:
 
                         self.GameMaster.startRound()
 
-            # --- Mirror any NEW lines from activeAI.action_log to the Game Log ---
-            if hasattr(self.GameMaster, "activeAI") and self.GameMaster.activeAI is not None:
-                log = getattr(self.GameMaster.activeAI, "action_log", None)
-                if isinstance(log, list):
-                    if len(log) > self._ai_log_len:
-                        # only append the new tail
-                        for line in log[self._ai_log_len:]:
-                            self.log(line, getattr(self.GameMaster.activeAI, "color", (0,0,0)))
-                        self._ai_log_len = len(log)
+            prev_state = {cid: data.copy() for cid, data in self._char_snapshots.items()}
+            current_state = self._capture_character_state()
+            if prev_state or current_state:
+                self._process_character_movements(prev_state, current_state)
+                self._process_ai_logs(prev_state, current_state)
+            self._char_snapshots = current_state
 
             # Cursor.state = self.field.update(dt, events, Cursor.state)
 
