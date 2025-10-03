@@ -118,6 +118,7 @@ class GameMain:
 
         self.GameMaster = GameMaster()
         self.currentMatch = 0
+        self._series_summary_logged = False
 
         # --- Match selection history (for restart functionality) ---
         self.last_team1_ID: int | None = None
@@ -266,7 +267,13 @@ class GameMain:
             message = " ".join(part for part in message_parts if part)
         elif event == "match_over":
             tag = "GAME"
-            message = ("Match over - {winner} win ({p1}-{p2})".format(
+            match_number = kwargs.get("match")
+            if match_number is not None:
+                match_label = f"Match {match_number} over"
+            else:
+                match_label = "Match over"
+            message = ("{match_label} - {winner} win ({p1}-{p2})".format(
+                match_label=match_label,
                 winner=kwargs.get("winner", ""),
                 p1=kwargs.get("p1_rounds", 0),
                 p2=kwargs.get("p2_rounds", 0)
@@ -286,7 +293,7 @@ class GameMain:
             ))
         elif event == "summary_series":
             tag = "SUMMARY"
-            message = ("Series - P1 matches={p1}   P2 matches={p2}".format(
+            message = ("Series - P1 matches = {p1}   P2 matches = {p2}".format(
                 p1=kwargs.get("p1_matches", 0),
                 p2=kwargs.get("p2_matches", 0)
             ))
@@ -295,6 +302,45 @@ class GameMain:
 
         label = tag_labels.get(tag, "")
         self.log(f"{label}{message}", tag_color(tag))
+
+    def _get_ai_label(self, team_id: int) -> str:
+        if 0 <= team_id < len(self._ai_type_labels):
+            return self._ai_type_labels[team_id]
+        return 'Unknown'
+
+    def _log_series_summary(self, total_matches_played: int | None = None) -> None:
+        """Append a formatted summary of the overall series to the game log."""
+        if self._series_summary_logged:
+            return
+
+        calculated_total = self.total_p1_win + self.total_p2_win
+        if total_matches_played is None:
+            total_matches_played = self.currentMatch
+        total_matches_played = max(total_matches_played, calculated_total)
+
+        ai1_name = self._get_ai_label(self.team1_ID)
+        ai2_name = self._get_ai_label(self.team2_ID)
+
+        if self.total_p1_win > self.total_p2_win:
+            winner = "P1"
+        elif self.total_p2_win > self.total_p1_win:
+            winner = "P2"
+        else:
+            winner = "TIE"
+
+        lines = [
+            f"GAME : WINNER = {winner}",
+            f"GAME : P1 total matches = {self.total_p1_win}   P2 total matches = {self.total_p2_win}",
+            f"GAME : Total matches played = {total_matches_played}",
+            f"GAME : P1 = {ai1_name}   P2 = {ai2_name}",
+            "GAME : SERIES OVER - FINAL RESULT",
+            "-------------------------------------"
+        ]
+
+        for line in reversed(lines):
+            self.log(line, LOG_COLOR_GAME)
+
+        self._series_summary_logged = True
 
     def _init_character_snapshots(self) -> None:
         self._char_snapshots: dict[int, dict] = {}
@@ -717,6 +763,7 @@ class GameMain:
         self._current_map_label = ''
         self._char_snapshots = {}
         self._sb_dragging = False
+        self._series_summary_logged = False
 
         self.startMatch()
 
@@ -738,6 +785,7 @@ class GameMain:
         self.p1_round_wins = 0
         self.p2_round_wins = 0
         self._current_map_label = ''
+        self._series_summary_logged = False
         self._char_snapshots = {}
         self._next_map_id_override = None
         Cursor.state = 5
@@ -789,8 +837,9 @@ class GameMain:
         self.currentMatch = 0
         self.total_p1_win = 0
         self.total_p2_win = 0
-        
-        self.startMatch()     
+        self._series_summary_logged = False
+
+        self.startMatch()
         
 
         # if self.p2_sel_cursor.grid[0] == 0:
@@ -816,8 +865,8 @@ class GameMain:
         self.p1_round_wins = 0
         self.p2_round_wins = 0
 
-        ai1_name = self._ai_type_labels[self.team1_ID] if 0 <= self.team1_ID < len(self._ai_type_labels) else 'Unknown'
-        ai2_name = self._ai_type_labels[self.team2_ID] if 0 <= self.team2_ID < len(self._ai_type_labels) else 'Unknown'
+        ai1_name = self._get_ai_label(self.team1_ID)
+        ai2_name = self._get_ai_label(self.team2_ID)
 
         if self.isAuto and self.currentMatch > self.match_limit:
             print("Auto mode completed after " + str(self.match_limit) + " matches.")
@@ -829,6 +878,7 @@ class GameMain:
                 self.game_state = 'lose'
             else:
                 print("-Tie breaking Match-")
+            self._log_series_summary(total_matches_played=self.total_p1_win + self.total_p2_win)
             return
 
         map_override = self._next_map_id_override
@@ -1507,7 +1557,7 @@ class GameMain:
 
                         if match_winner == 1:
                             self.total_p1_win += 1
-                            self.log_event('match_over', winner='P1', p1_rounds=self.p1_round_wins, p2_rounds=self.p2_round_wins)
+                            self.log_event('match_over', match=self.currentMatch, winner='P1', p1_rounds=self.p1_round_wins, p2_rounds=self.p2_round_wins)
                             self.log_event('summary_match', match=self.currentMatch, map_label=self._current_map_label)
                             self.log_event('summary_result', winner=1, p1_rounds=self.p1_round_wins, p2_rounds=self.p2_round_wins)
                             self.log_event('summary_series', p1_matches=self.total_p1_win, p2_matches=self.total_p2_win)
@@ -1516,9 +1566,10 @@ class GameMain:
                                 self.startMatch()
                                 return
                             self.game_state = 'win'
+                            self._log_series_summary()
                         elif match_winner == 2:
                             self.total_p2_win += 1
-                            self.log_event('match_over', winner='P2', p1_rounds=self.p1_round_wins, p2_rounds=self.p2_round_wins)
+                            self.log_event('match_over', match=self.currentMatch, winner='P2', p1_rounds=self.p1_round_wins, p2_rounds=self.p2_round_wins)
                             self.log_event('summary_match', match=self.currentMatch, map_label=self._current_map_label)
                             self.log_event('summary_result', winner=2, p1_rounds=self.p1_round_wins, p2_rounds=self.p2_round_wins)
                             self.log_event('summary_series', p1_matches=self.total_p1_win, p2_matches=self.total_p2_win)
@@ -1527,6 +1578,7 @@ class GameMain:
                                 self.startMatch()
                                 return
                             self.game_state = 'lose'
+                            self._log_series_summary()
 
                         self.number_action = -1
                         for chara in Character.team1_list + Character.team2_list:
