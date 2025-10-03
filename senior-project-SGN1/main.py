@@ -568,6 +568,31 @@ class GameMain:
         """Helper: current log panel rect (same as in render)."""
         return pygame.Rect(LOG_X, LOG_Y, LOG_W, LOG_H)
 
+    # UI hit-test helpers
+    def _grid_from_mouse_pos(self, pos: tuple[int, int]) -> tuple[int, int] | None:
+        # Translate a mouse position to a (row, col) on the 8x8 board, or None if outside
+        if not hasattr(self, 'field'):
+            return None
+        x, y = pos
+        rect = self.field.rect
+        if not rect.collidepoint(x, y):
+            return None
+        row = int((y - rect.y) // self.field.boxes_height)
+        col = int((x - rect.x) // self.field.boxes_width)
+        # clamp just in case
+        row = max(0, min(self.field.rows - 1, row))
+        col = max(0, min(self.field.cols - 1, col))
+        return (row, col)
+
+    def _action_rects_for_chara(self, chara) -> list[tuple[int, pygame.Rect]]:
+        # Return list of (action_index, rect) for the Actions List UI of a character.
+        rects: list[tuple[int, pygame.Rect]] = []
+        i = 0
+        for idx, _ in enumerate(chara.template.get("actions", [])):
+            rects.append((idx, pygame.Rect(1000, 88 + i, 220, 150)))
+            i += 170
+        return rects
+
     def _extract_field_map_id(self) -> int | None:
         """Return the numeric map id from the current field, if available."""
         if not hasattr(self, 'field') or self.field is None:
@@ -935,7 +960,7 @@ class GameMain:
                     pygame.quit()
                     sys.exit()
                 if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_RETURN or event.key == pygame.K_x:
+                    if event.key == pygame.K_RETURN:
                         if self.p1_sel_cursor.show and self.p2_sel_cursor.show:
                             self.screen1init()
                     if event.key == pygame.K_UP:
@@ -969,6 +994,33 @@ class GameMain:
                 if event.type == pygame.MOUSEMOTION:
                     if self._match_limit_slider_dragging:
                         self.match_limit = self._match_limit_value_from_pos(event.pos[0])
+                        
+                # Mouse: make all 10 AI type buttons clickable
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    mx, my = event.pos
+                    # Left column (Player 1)
+                    left_x = WIDTH // 4 - 210
+                    for i in range(5):
+                        rect = pygame.Rect(left_x, 200 + i * 90, 420, 60)
+                        if rect.collidepoint(mx, my):
+                            # Select AI for Player 1
+                            self.p1_sel_cursor.moveTo((i, 0))
+                            self.p1_sel_cursor.show = True
+                            # Move the yellow menu cursor to the clicked button (left column)
+                            self.menu_cursor.moveTo((i, 0))
+                            break
+
+                    # Right column (Player 2)
+                    right_x = WIDTH // 2 + WIDTH // 4 - 210
+                    for i in range(5):
+                        rect = pygame.Rect(right_x, 200 + i * 90, 420, 60)
+                        if rect.collidepoint(mx, my):
+                            # Select AI for Player 2
+                            self.p2_sel_cursor.moveTo((i, 0))
+                            self.p2_sel_cursor.show = True
+                            # Move the yellow menu cursor to the clicked button (right column)
+                            self.menu_cursor.moveTo((i, 1))
+                            break
 
         elif self.game_screen == 1:
             geom = self._calc_log_geometry()
@@ -1017,13 +1069,117 @@ class GameMain:
                     continue
 
                 if event.type == pygame.MOUSEBUTTONDOWN:
+                    # Right-click (cancel) for human player, mirrors X key behavior
+                    if event.button == 3 and self.GameMaster.isActiveAIHuman():
+                        if Cursor.state == 1:
+                            # Cancel movement selection
+                            self.field.clearMovement()
+                            Cursor.state = 0
+                            continue
+                        elif Cursor.state == 2:
+                            # Close action menu
+                            self.field.hover_cursor.show = True
+                            Cursor.selected_action = -1
+                            self.field.select_cursor.show = False
+                            Cursor.state = 0
+                            continue
+                        elif Cursor.state == 3:
+                            # Close enemy movement preview
+                            self.field.select_cursor.show = False
+                            self.field.clearMovement()
+                            Cursor.state = 0
+                            continue
+                        elif Cursor.state == 4:
+                            # Exit targeting, back to action menu
+                            self.field.hover_cursor.show = False
+                            Cursor.state = 2
+                            for i in range(self.field.rows):
+                                for j in range(self.field.cols):
+                                    self.field.boxes[i][j].selected_red = False
+                            continue
+
                     if event.button == 1 and self.GameMaster.isActiveAIHuman():
+                        # 1) Pass-turn button
                         if self.pass_turn_button_rect.collidepoint(event.pos):
                             self.GameMaster.activeAI.turnFinished = True
                             self.log_event('pass', team=getattr(self.GameMaster.activeAI, 'team', 1))
                             Cursor.state = 0
                             self.field.select_cursor.show = False
                             self.field.hover_cursor.show = True
+                            continue
+
+                        # 2) Actions panel click (only when in action menu state and a unit is selected)
+                        if Cursor.state == 2:
+                            chara = self.field.select_cursor.getChara()
+                            if chara is not None:
+                                for idx, r in self._action_rects_for_chara(chara):
+                                    if r.collidepoint(event.pos):
+                                        # Choose this action and go to targeting
+                                        Cursor.selected_action = idx
+                                        Cursor.state = 4
+                                        self.field.hover_cursor.show = True
+                                        self.field.getActionArea(chara, idx)
+                                        break
+
+                        # 3) Board click: move hover to tile and act based on current state
+                        grid = self._grid_from_mouse_pos(event.pos)
+                        if grid is not None:
+                            # Move hover cursor to the clicked tile first
+                            self.field.hover_cursor.moveTo(grid)
+
+                            # State machine similar to PlayerInput.receiveInput for KEYZ
+                            if Cursor.state == 0:
+                                # Try selecting a character at this tile
+                                chara = Character.getCharacterByGrid(grid)
+                                if chara is not None and not chara.acted:
+                                    self.field.select_cursor.moveTo(grid)
+                                    self.field.select_cursor.show = True
+                                    if chara in Character.team1_list:
+                                        if chara.moved:
+                                            Cursor.state = 2
+                                            Cursor.selected_action = 0
+                                            self.field.hover_cursor.show = False
+                                        else:
+                                            Cursor.state = 1
+                                            self.field.getMovement(chara)
+                                    else:
+                                        # enemy unit: show its movement preview and block actions
+                                        Cursor.state = 3
+                                        self.field.getMovement(chara)
+
+                            elif Cursor.state == 1:
+                                # Confirm movement if tile is allowed
+                                box = self.field.boxes[grid[0]][grid[1]]
+                                if getattr(box, 'selected', False):
+                                    chara = self.field.select_cursor.getChara()
+                                    if chara is not None:
+                                        chara.moveTo(grid)
+                                    self.field.clearMovement()
+                                    Cursor.state = 0
+
+                            elif Cursor.state == 4:
+                                # Choose target for the selected action
+                                box = self.field.boxes[grid[0]][grid[1]]
+                                if getattr(box, 'selected_red', False):
+                                    chara = self.field.select_cursor.getChara()
+                                    target = self.field.hover_cursor.getChara()
+                                    if (chara is not None and chara in Character.team1_list) and \
+                                       (target is not None and target in Character.team2_list):
+                                        if self.field.boxes[target.grid[0]][target.grid[1]].terrain == 1:
+                                            modifier = -2
+                                        else:
+                                            modifier = 0
+                                        # Execute via the active human AI to keep logs/flags consistent
+                                        self.GameMaster.activeAI.useCharaAction(chara, target, Cursor.selected_action, modifier)
+                                        # Reset visuals and state (match keyboard path)
+                                        self.field.select_cursor.show = False
+                                        Cursor.selected_action = -1
+                                        for i in range(self.field.rows):
+                                            for j in range(self.field.cols):
+                                                self.field.boxes[i][j].selected_red = False
+                                        Cursor.state = 0
+                                        # Update end-of-turn check for human AI
+                                        self.GameMaster.activeAI.turnFinished = self.GameMaster.activeAI.checkCharaActed()
                 
                 # if event.type == pygame.KEYDOWN:
                 #     if event.key == pygame.K_p and Cursor.state != 5 and Cursor.state != 6 and self.game_state == 'attacking phase':
@@ -1489,7 +1645,7 @@ class GameMain:
                 text_rect = text.get_rect(center=(WIDTH // 2 + WIDTH // 4, 200 + i*90 + 30))
                 self.screen.blit(text, text_rect)
 
-            text = self.font_sm.render(f'Press X or ENTER to start', False, (0, 0, 0))
+            text = self.font_sm.render(f'Press ENTER to start', False, (0, 0, 0))
             text_rect = text.get_rect(center=(WIDTH // 2, 690))
             self.screen.blit(text, text_rect)
 
