@@ -62,7 +62,7 @@ class AIFramework:
     def moveCharaTo(self, chara: Character, grid: tuple[int, int]) -> None:
         cols = "abcdefgh"
         charaName = chara.template["display_name"]
-        gridName = cols[grid[1]] + str(grid[0] + 1)
+        gridName = cols[grid[1]] + str(GRID_ROWS - grid[0])
 
         logs = [
             f"{charaName} moves to grid {gridName}"
@@ -79,7 +79,7 @@ class AIFramework:
         actionName = chara.template["actions"][actionNo]["action_display_name"]
         actionDamage = chara.template["actions"][actionNo]["damage"]
         targetName = target.template["display_name"]
-        gridName = cols[target.grid[1]] + str(8 - target.grid[0])
+        gridName = cols[target.grid[1]] + str(GRID_ROWS - target.grid[0])
 
         logs = [
             f"{charaName} uses {actionName}",
