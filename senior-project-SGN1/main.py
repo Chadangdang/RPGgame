@@ -1063,6 +1063,8 @@ class GameMain:
         self.last_map_generated_id = actual_map_id
         self.last_map_was_random = map_was_random
 
+        # Position cursor on first team1 character
+        self.field.positionCursorOnTeam1Character()
 
         self.GameMaster.setTeams(self.team1_ID, self.team2_ID)
         self.GameMaster.team1.loadField(self.field)
