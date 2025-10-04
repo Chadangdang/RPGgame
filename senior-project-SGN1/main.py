@@ -115,6 +115,19 @@ class GameMain:
         self.endgame_menu_hovered = False
         self.endgame_restart_hovered = False
         self.endgame_export_hovered = False
+        self._endgame_selected_idx = 0  # 0=Menu, 1=Restart, 2=Export
+        self._prev_endgame_active = False
+
+        # --- Pause popup (for human player) ---
+        self._pause_active = False
+        self.pause_popup_rect = pygame.Rect(243, 151, 794, 420)
+        self.pause_resume_button_rect = pygame.Rect(342, 416, 166, 56)
+        self.pause_restart_button_rect = pygame.Rect(558, 416, 166, 56)
+        self.pause_menu_button_rect = pygame.Rect(774, 416, 166, 56)
+        self.pause_resume_hovered = False
+        self.pause_restart_hovered = False
+        self.pause_menu_hovered = False
+        self._pause_selected_idx = 0  # 0=Resume, 1=Restart, 2=Menu
 
         self.GameMaster = GameMaster()
         self.currentMatch = 0
@@ -718,6 +731,23 @@ class GameMain:
             return
 
         if event.type == pygame.KEYDOWN:
+            # Left/Right to change selection, Z to confirm
+            if event.key == pygame.K_LEFT:
+                self._endgame_selected_idx = (self._endgame_selected_idx - 1) % 3
+                return
+            if event.key == pygame.K_RIGHT:
+                self._endgame_selected_idx = (self._endgame_selected_idx + 1) % 3
+                return
+            if event.key == pygame.K_z:
+                if self._endgame_selected_idx == 0:
+                    self._return_to_menu()
+                elif self._endgame_selected_idx == 1:
+                    self._restart_match_from_popup()
+                else:
+                    # Export log not implemented yet
+                    pass
+                return
+
             if event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_r):
                 self._restart_match_from_popup()
             elif event.key in (pygame.K_ESCAPE, pygame.K_p):
@@ -812,6 +842,14 @@ class GameMain:
         self._draw_endgame_button(self.endgame_restart_button_rect, 'RESTART', self.endgame_restart_hovered)
         self._draw_endgame_button(self.endgame_export_button_rect, 'EXPORT LOG', self.endgame_export_hovered)
 
+        # Yellow highlight for endgame button
+        selected_rect = [
+            self.endgame_menu_button_rect,
+            self.endgame_restart_button_rect,
+            self.endgame_export_button_rect,
+        ][self._endgame_selected_idx]
+        pygame.draw.rect(self.screen, YELLOW, selected_rect, 4)
+
     def _draw_endgame_button(self, rect: pygame.Rect, text: str, hovered: bool) -> None:
         fill_color = (255, 255, 255)
         border_color = (0, 0, 0)
@@ -825,6 +863,83 @@ class GameMain:
         label = self.font_end_button.render(text, False, (0, 0, 0))
         label_rect = label.get_rect(center=rect.center)
         self.screen.blit(label, label_rect)
+
+    # Pause popup
+    def _is_pause_popup_active(self) -> bool:
+        return self._pause_active and not self._is_endgame_popup_active()
+
+    def _reset_pause_hover_states(self) -> None:
+        self.pause_resume_hovered = False
+        self.pause_restart_hovered = False
+        self.pause_menu_hovered = False
+
+    def _handle_pause_event(self, event: pygame.event.Event, geom: dict) -> None:
+        # Allow scrolling the log while paused
+        if self._handle_log_event(event, geom):
+            return
+
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                # Resume game
+                self._pause_active = False
+                self._reset_pause_hover_states()
+            elif event.key == pygame.K_LEFT:
+                self._pause_selected_idx = (self._pause_selected_idx - 1) % 3
+            elif event.key == pygame.K_RIGHT:
+                self._pause_selected_idx = (self._pause_selected_idx + 1) % 3
+            elif event.key == pygame.K_z:
+                if self._pause_selected_idx == 0:  # Resume
+                    self._pause_active = False
+                    self._reset_pause_hover_states()
+                elif self._pause_selected_idx == 1:  # Restart
+                    self._pause_active = False
+                    self._reset_pause_hover_states()
+                    self._restart_match_from_popup()
+                elif self._pause_selected_idx == 2:  # Menu
+                    self._pause_active = False
+                    self._reset_pause_hover_states()
+                    self._return_to_menu()
+            return
+
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.pause_resume_button_rect.collidepoint(event.pos):
+                self._pause_active = False
+                self._reset_pause_hover_states()
+            elif self.pause_restart_button_rect.collidepoint(event.pos):
+                self._pause_active = False
+                self._reset_pause_hover_states()
+                self._restart_match_from_popup()
+            elif self.pause_menu_button_rect.collidepoint(event.pos):
+                self._pause_active = False
+                self._reset_pause_hover_states()
+                self._return_to_menu()
+
+    def _render_pause_popup(self, geom: dict) -> None:
+        # Dim background, same as endgame, but keep log area transparent
+        overlay = self._endgame_overlay
+        overlay.fill((0, 0, 0, 140))
+        overlay.fill((0, 0, 0, 0), geom["log_rect"])
+        self.screen.blit(overlay, (0, 0))
+
+        pygame.draw.rect(self.screen, (217, 217, 217), self.pause_popup_rect)
+        pygame.draw.rect(self.screen, (0, 0, 0), self.pause_popup_rect, 2)
+
+        title_surface = self.font_end_title.render('PAUSED', False, (0, 0, 0))
+        title_rect = title_surface.get_rect(center=(self.pause_popup_rect.centerx,
+                                                   self.pause_popup_rect.y + 100))
+        self.screen.blit(title_surface, title_rect)
+
+        self._draw_endgame_button(self.pause_resume_button_rect, 'RESUME', self.pause_resume_hovered)
+        self._draw_endgame_button(self.pause_restart_button_rect, 'RESTART', self.pause_restart_hovered)
+        self._draw_endgame_button(self.pause_menu_button_rect, 'MENU', self.pause_menu_hovered)
+
+        # Yellow highlight for endgame button
+        selected_rect = [
+            self.pause_resume_button_rect,
+            self.pause_restart_button_rect,
+            self.pause_menu_button_rect,
+        ][self._pause_selected_idx]
+        pygame.draw.rect(self.screen, YELLOW, selected_rect, 4)
     def screen1init(self):
 
         self.match_limit = max(self._match_limit_min, min(self._match_limit_max, self.match_limit))
@@ -1077,6 +1192,11 @@ class GameMain:
             self._sb_last_geometry = geom
 
             endgame_active = self._is_endgame_popup_active()
+            pause_active = self._is_pause_popup_active()
+            # Initialize endgame selection the frame it becomes active
+            if endgame_active and not self._prev_endgame_active:
+                self._endgame_selected_idx = 0
+            self._prev_endgame_active = endgame_active
 
             mouse_pos = pygame.mouse.get_pos()
             if endgame_active:
@@ -1084,9 +1204,17 @@ class GameMain:
                 self.endgame_menu_hovered = self.endgame_menu_button_rect.collidepoint(mouse_pos)
                 self.endgame_restart_hovered = self.endgame_restart_button_rect.collidepoint(mouse_pos)
                 self.endgame_export_hovered = self.endgame_export_button_rect.collidepoint(mouse_pos)
+                self._reset_pause_hover_states()
+            elif pause_active:
+                self.pass_turn_button_hovered = False
+                self.pause_resume_hovered = self.pause_resume_button_rect.collidepoint(mouse_pos)
+                self.pause_restart_hovered = self.pause_restart_button_rect.collidepoint(mouse_pos)
+                self.pause_menu_hovered = self.pause_menu_button_rect.collidepoint(mouse_pos)
+                self._reset_endgame_hover_states()
             else:
                 self.pass_turn_button_hovered = self.pass_turn_button_rect.collidepoint(mouse_pos)
                 self._reset_endgame_hover_states()
+                self._reset_pause_hover_states()
 
             for event in events:
                 if event.type == pygame.QUIT:
@@ -1095,6 +1223,10 @@ class GameMain:
 
                 if endgame_active:
                     self._handle_endgame_event(event, geom)
+                    continue
+
+                if pause_active:
+                    self._handle_pause_event(event, geom)
                     continue
 
                 if self._handle_log_event(event, geom):
@@ -1109,6 +1241,11 @@ class GameMain:
                         self.action_delay = 0.8
                     elif event.key in [pygame.K_UP, pygame.K_DOWN, pygame.K_LEFT, pygame.K_RIGHT, pygame.K_z, pygame.K_x]:
                         self.GameMaster.keyInput(event.key)
+                    elif event.key == pygame.K_ESCAPE:
+                        # Open pause only when human is active and not in endgame
+                        if self.GameMaster.isActiveAIHuman() and not endgame_active:
+                            self._pause_active = True
+                            self._pause_selected_idx = 0
                     elif event.key == pygame.K_p:
                         if self.GameMaster.isActiveAIHuman():
                             self.GameMaster.activeAI.turnFinished = True
@@ -2023,6 +2160,8 @@ class GameMain:
 
             if self._is_endgame_popup_active():
                 self._render_endgame_popup(geom)
+            elif self._is_pause_popup_active():
+                self._render_pause_popup(geom)
                 
 if __name__ == '__main__':
     main = GameMain()
