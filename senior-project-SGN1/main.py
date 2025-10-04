@@ -119,9 +119,23 @@ class GameMain:
         self.endgame_menu_hovered = False
         self.endgame_restart_hovered = False
         self.endgame_export_hovered = False
+        self._endgame_selected_idx = 0  # 0=Menu, 1=Restart, 2=Export
+        self._prev_endgame_active = False
+
+        # --- Pause popup (for human player) ---
+        self._pause_active = False
+        self.pause_popup_rect = pygame.Rect(243, 151, 794, 420)
+        self.pause_resume_button_rect = pygame.Rect(342, 416, 166, 56)
+        self.pause_restart_button_rect = pygame.Rect(558, 416, 166, 56)
+        self.pause_menu_button_rect = pygame.Rect(774, 416, 166, 56)
+        self.pause_resume_hovered = False
+        self.pause_restart_hovered = False
+        self.pause_menu_hovered = False
+        self._pause_selected_idx = 0  # 0=Resume, 1=Restart, 2=Menu
 
         self.GameMaster = GameMaster()
         self.currentMatch = 0
+        self._series_summary_logged = False
 
         # --- Match selection history (for restart functionality) ---
         self.last_team1_ID: int | None = None
@@ -274,7 +288,13 @@ class GameMain:
             message = " ".join(part for part in message_parts if part)
         elif event == "match_over":
             tag = "GAME"
-            message = ("Match over - {winner} win ({p1}-{p2})".format(
+            match_number = kwargs.get("match")
+            if match_number is not None:
+                match_label = f"Match {match_number} over"
+            else:
+                match_label = "Match over"
+            message = ("{match_label} - {winner} win ({p1}-{p2})".format(
+                match_label=match_label,
                 winner=kwargs.get("winner", ""),
                 p1=kwargs.get("p1_rounds", 0),
                 p2=kwargs.get("p2_rounds", 0)
@@ -294,7 +314,7 @@ class GameMain:
             ))
         elif event == "summary_series":
             tag = "SUMMARY"
-            message = ("Series - P1 matches={p1}   P2 matches={p2}".format(
+            message = ("Series - P1 matches = {p1}   P2 matches = {p2}".format(
                 p1=kwargs.get("p1_matches", 0),
                 p2=kwargs.get("p2_matches", 0)
             ))
@@ -303,6 +323,45 @@ class GameMain:
 
         label = tag_labels.get(tag, "")
         self.log(f"{label}{message}", tag_color(tag))
+
+    def _get_ai_label(self, team_id: int) -> str:
+        if 0 <= team_id < len(self._ai_type_labels):
+            return self._ai_type_labels[team_id]
+        return 'Unknown'
+
+    def _log_series_summary(self, total_matches_played: int | None = None) -> None:
+        """Append a formatted summary of the overall series to the game log."""
+        if self._series_summary_logged:
+            return
+
+        calculated_total = self.total_p1_win + self.total_p2_win
+        if total_matches_played is None:
+            total_matches_played = self.currentMatch
+        total_matches_played = max(total_matches_played, calculated_total)
+
+        ai1_name = self._get_ai_label(self.team1_ID)
+        ai2_name = self._get_ai_label(self.team2_ID)
+
+        if self.total_p1_win > self.total_p2_win:
+            winner = "P1"
+        elif self.total_p2_win > self.total_p1_win:
+            winner = "P2"
+        else:
+            winner = "TIE"
+
+        lines = [
+            f"GAME : WINNER = {winner}",
+            f"GAME : P1 total matches = {self.total_p1_win}   P2 total matches = {self.total_p2_win}",
+            f"GAME : Total matches played = {total_matches_played}",
+            f"GAME : P1 = {ai1_name}   P2 = {ai2_name}",
+            "GAME : SERIES OVER - FINAL RESULT",
+            "-------------------------------------"
+        ]
+
+        for line in reversed(lines):
+            self.log(line, LOG_COLOR_GAME)
+
+        self._series_summary_logged = True
 
     def _init_character_snapshots(self) -> None:
         self._char_snapshots: dict[int, dict] = {}
@@ -697,6 +756,23 @@ class GameMain:
             return
 
         if event.type == pygame.KEYDOWN:
+            # Left/Right to change selection, Z to confirm
+            if event.key == pygame.K_LEFT:
+                self._endgame_selected_idx = (self._endgame_selected_idx - 1) % 3
+                return
+            if event.key == pygame.K_RIGHT:
+                self._endgame_selected_idx = (self._endgame_selected_idx + 1) % 3
+                return
+            if event.key == pygame.K_z:
+                if self._endgame_selected_idx == 0:
+                    self._return_to_menu()
+                elif self._endgame_selected_idx == 1:
+                    self._restart_match_from_popup()
+                else:
+                    # Export log not implemented yet
+                    pass
+                return
+
             if event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_r):
                 self._restart_match_from_popup()
             elif event.key in (pygame.K_ESCAPE, pygame.K_p):
@@ -742,6 +818,7 @@ class GameMain:
         self._current_map_label = ''
         self._char_snapshots = {}
         self._sb_dragging = False
+        self._series_summary_logged = False
 
         self.startMatch()
 
@@ -763,6 +840,7 @@ class GameMain:
         self.p1_round_wins = 0
         self.p2_round_wins = 0
         self._current_map_label = ''
+        self._series_summary_logged = False
         self._char_snapshots = {}
         self._next_map_id_override = None
         Cursor.state = 5
@@ -789,6 +867,14 @@ class GameMain:
         self._draw_endgame_button(self.endgame_restart_button_rect, 'RESTART', self.endgame_restart_hovered)
         self._draw_endgame_button(self.endgame_export_button_rect, 'EXPORT LOG', self.endgame_export_hovered)
 
+        # Yellow highlight for endgame button
+        selected_rect = [
+            self.endgame_menu_button_rect,
+            self.endgame_restart_button_rect,
+            self.endgame_export_button_rect,
+        ][self._endgame_selected_idx]
+        pygame.draw.rect(self.screen, YELLOW, selected_rect, 4)
+
     def _draw_endgame_button(self, rect: pygame.Rect, text: str, hovered: bool) -> None:
         fill_color = (255, 255, 255)
         border_color = (0, 0, 0)
@@ -802,6 +888,83 @@ class GameMain:
         label = self.font_end_button.render(text, False, (0, 0, 0))
         label_rect = label.get_rect(center=rect.center)
         self.screen.blit(label, label_rect)
+
+    # Pause popup
+    def _is_pause_popup_active(self) -> bool:
+        return self._pause_active and not self._is_endgame_popup_active()
+
+    def _reset_pause_hover_states(self) -> None:
+        self.pause_resume_hovered = False
+        self.pause_restart_hovered = False
+        self.pause_menu_hovered = False
+
+    def _handle_pause_event(self, event: pygame.event.Event, geom: dict) -> None:
+        # Allow scrolling the log while paused
+        if self._handle_log_event(event, geom):
+            return
+
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                # Resume game
+                self._pause_active = False
+                self._reset_pause_hover_states()
+            elif event.key == pygame.K_LEFT:
+                self._pause_selected_idx = (self._pause_selected_idx - 1) % 3
+            elif event.key == pygame.K_RIGHT:
+                self._pause_selected_idx = (self._pause_selected_idx + 1) % 3
+            elif event.key == pygame.K_z:
+                if self._pause_selected_idx == 0:  # Resume
+                    self._pause_active = False
+                    self._reset_pause_hover_states()
+                elif self._pause_selected_idx == 1:  # Restart
+                    self._pause_active = False
+                    self._reset_pause_hover_states()
+                    self._restart_match_from_popup()
+                elif self._pause_selected_idx == 2:  # Menu
+                    self._pause_active = False
+                    self._reset_pause_hover_states()
+                    self._return_to_menu()
+            return
+
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.pause_resume_button_rect.collidepoint(event.pos):
+                self._pause_active = False
+                self._reset_pause_hover_states()
+            elif self.pause_restart_button_rect.collidepoint(event.pos):
+                self._pause_active = False
+                self._reset_pause_hover_states()
+                self._restart_match_from_popup()
+            elif self.pause_menu_button_rect.collidepoint(event.pos):
+                self._pause_active = False
+                self._reset_pause_hover_states()
+                self._return_to_menu()
+
+    def _render_pause_popup(self, geom: dict) -> None:
+        # Dim background, same as endgame, but keep log area transparent
+        overlay = self._endgame_overlay
+        overlay.fill((0, 0, 0, 140))
+        overlay.fill((0, 0, 0, 0), geom["log_rect"])
+        self.screen.blit(overlay, (0, 0))
+
+        pygame.draw.rect(self.screen, (217, 217, 217), self.pause_popup_rect)
+        pygame.draw.rect(self.screen, (0, 0, 0), self.pause_popup_rect, 2)
+
+        title_surface = self.font_end_title.render('PAUSED', False, (0, 0, 0))
+        title_rect = title_surface.get_rect(center=(self.pause_popup_rect.centerx,
+                                                   self.pause_popup_rect.y + 100))
+        self.screen.blit(title_surface, title_rect)
+
+        self._draw_endgame_button(self.pause_resume_button_rect, 'RESUME', self.pause_resume_hovered)
+        self._draw_endgame_button(self.pause_restart_button_rect, 'RESTART', self.pause_restart_hovered)
+        self._draw_endgame_button(self.pause_menu_button_rect, 'MENU', self.pause_menu_hovered)
+
+        # Yellow highlight for endgame button
+        selected_rect = [
+            self.pause_resume_button_rect,
+            self.pause_restart_button_rect,
+            self.pause_menu_button_rect,
+        ][self._pause_selected_idx]
+        pygame.draw.rect(self.screen, YELLOW, selected_rect, 4)
     def screen1init(self):
 
         self.match_limit = max(self._match_limit_min, min(self._match_limit_max, self.match_limit))
@@ -814,8 +977,9 @@ class GameMain:
         self.currentMatch = 0
         self.total_p1_win = 0
         self.total_p2_win = 0
-        
-        self.startMatch()     
+        self._series_summary_logged = False
+
+        self.startMatch()
         
 
         # if self.p2_sel_cursor.grid[0] == 0:
@@ -841,8 +1005,8 @@ class GameMain:
         self.p1_round_wins = 0
         self.p2_round_wins = 0
 
-        ai1_name = self._ai_type_labels[self.team1_ID] if 0 <= self.team1_ID < len(self._ai_type_labels) else 'Unknown'
-        ai2_name = self._ai_type_labels[self.team2_ID] if 0 <= self.team2_ID < len(self._ai_type_labels) else 'Unknown'
+        ai1_name = self._get_ai_label(self.team1_ID)
+        ai2_name = self._get_ai_label(self.team2_ID)
 
         if self.isAuto and self.currentMatch > self.match_limit:
             print("Auto mode completed after " + str(self.match_limit) + " matches.")
@@ -854,6 +1018,7 @@ class GameMain:
                 self.game_state = 'lose'
             else:
                 print("-Tie breaking Match-")
+            self._log_series_summary(total_matches_played=self.total_p1_win + self.total_p2_win)
             return
 
         map_override = self._next_map_id_override
@@ -923,6 +1088,8 @@ class GameMain:
         self.last_map_generated_id = actual_map_id
         self.last_map_was_random = map_was_random
 
+        # Position cursor on first team1 character
+        self.field.positionCursorOnTeam1Character()
 
         self.GameMaster.setTeams(self.team1_ID, self.team2_ID)
         self.GameMaster.team1.loadField(self.field)
@@ -1052,6 +1219,11 @@ class GameMain:
             self._sb_last_geometry = geom
 
             endgame_active = self._is_endgame_popup_active()
+            pause_active = self._is_pause_popup_active()
+            # Initialize endgame selection the frame it becomes active
+            if endgame_active and not self._prev_endgame_active:
+                self._endgame_selected_idx = 0
+            self._prev_endgame_active = endgame_active
 
             mouse_pos = pygame.mouse.get_pos()
             if endgame_active:
@@ -1059,9 +1231,17 @@ class GameMain:
                 self.endgame_menu_hovered = self.endgame_menu_button_rect.collidepoint(mouse_pos)
                 self.endgame_restart_hovered = self.endgame_restart_button_rect.collidepoint(mouse_pos)
                 self.endgame_export_hovered = self.endgame_export_button_rect.collidepoint(mouse_pos)
+                self._reset_pause_hover_states()
+            elif pause_active:
+                self.pass_turn_button_hovered = False
+                self.pause_resume_hovered = self.pause_resume_button_rect.collidepoint(mouse_pos)
+                self.pause_restart_hovered = self.pause_restart_button_rect.collidepoint(mouse_pos)
+                self.pause_menu_hovered = self.pause_menu_button_rect.collidepoint(mouse_pos)
+                self._reset_endgame_hover_states()
             else:
                 self.pass_turn_button_hovered = self.pass_turn_button_rect.collidepoint(mouse_pos)
                 self._reset_endgame_hover_states()
+                self._reset_pause_hover_states()
 
             for event in events:
                 if event.type == pygame.QUIT:
@@ -1070,6 +1250,10 @@ class GameMain:
 
                 if endgame_active:
                     self._handle_endgame_event(event, geom)
+                    continue
+
+                if pause_active:
+                    self._handle_pause_event(event, geom)
                     continue
 
                 if self._handle_log_event(event, geom):
@@ -1084,6 +1268,11 @@ class GameMain:
                         self.action_delay = 0.8
                     elif event.key in [pygame.K_UP, pygame.K_DOWN, pygame.K_LEFT, pygame.K_RIGHT, pygame.K_z, pygame.K_x]:
                         self.GameMaster.keyInput(event.key)
+                    elif event.key == pygame.K_ESCAPE:
+                        # Open pause only when human is active and not in endgame
+                        if self.GameMaster.isActiveAIHuman() and not endgame_active:
+                            self._pause_active = True
+                            self._pause_selected_idx = 0
                     elif event.key == pygame.K_p:
                         if self.GameMaster.isActiveAIHuman():
                             self.GameMaster.activeAI.turnFinished = True
@@ -1532,7 +1721,7 @@ class GameMain:
 
                         if match_winner == 1:
                             self.total_p1_win += 1
-                            self.log_event('match_over', winner='P1', p1_rounds=self.p1_round_wins, p2_rounds=self.p2_round_wins)
+                            self.log_event('match_over', match=self.currentMatch, winner='P1', p1_rounds=self.p1_round_wins, p2_rounds=self.p2_round_wins)
                             self.log_event('summary_match', match=self.currentMatch, map_label=self._current_map_label)
                             self.log_event('summary_result', winner=1, p1_rounds=self.p1_round_wins, p2_rounds=self.p2_round_wins)
                             self.log_event('summary_series', p1_matches=self.total_p1_win, p2_matches=self.total_p2_win)
@@ -1541,9 +1730,10 @@ class GameMain:
                                 self.startMatch()
                                 return
                             self.game_state = 'win'
+                            self._log_series_summary()
                         elif match_winner == 2:
                             self.total_p2_win += 1
-                            self.log_event('match_over', winner='P2', p1_rounds=self.p1_round_wins, p2_rounds=self.p2_round_wins)
+                            self.log_event('match_over', match=self.currentMatch, winner='P2', p1_rounds=self.p1_round_wins, p2_rounds=self.p2_round_wins)
                             self.log_event('summary_match', match=self.currentMatch, map_label=self._current_map_label)
                             self.log_event('summary_result', winner=2, p1_rounds=self.p1_round_wins, p2_rounds=self.p2_round_wins)
                             self.log_event('summary_series', p1_matches=self.total_p1_win, p2_matches=self.total_p2_win)
@@ -1552,6 +1742,7 @@ class GameMain:
                                 self.startMatch()
                                 return
                             self.game_state = 'lose'
+                            self._log_series_summary()
 
                         self.number_action = -1
                         for chara in Character.team1_list + Character.team2_list:
@@ -1996,6 +2187,8 @@ class GameMain:
 
             if self._is_endgame_popup_active():
                 self._render_endgame_popup(geom)
+            elif self._is_pause_popup_active():
+                self._render_pause_popup(geom)
                 
     def export_game_log(self) -> None:
         """Export the game log to an Excel file with 'Game Log' and 'Match Summary' sheets."""

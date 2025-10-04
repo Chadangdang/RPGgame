@@ -46,6 +46,12 @@ class Field:
 
         self.font_ss = pygame.font.Font('resource/font.ttf', 18)
 
+    # Get the first team1 np.character's position
+    def positionCursorOnTeam1Character(self) -> None:
+        if Character.team1_list:
+            first_character = Character.team1_list[0]
+            self.hover_cursor.moveTo(first_character.grid)
+
     def generateTerrain(self, rand_map, map_id) -> None:
         if rand_map:
             self.map.generateTerrain(randomMap=True)  # Generate map terrain
