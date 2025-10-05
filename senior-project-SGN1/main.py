@@ -174,11 +174,16 @@ class GameMain:
         self._sb_dragging = False
         self._sb_drag_offset_y = 0  # mouse offset inside thumb while dragging
         self._sb_last_geometry = None  # cached geometry for hit tests
+        
+        self.cumulative_time = 0.0
+        self.match_start_time = 0.0
+        self.last_match_duration = 0.0       
 
     # --------- logging helper ----------
-    def log(self, text: str, color=(0, 0, 0)) -> None:
+    def log(self, text: str, color=(0, 0, 0), time_elapsed=0.0) -> None:
         """Append a line to the game log."""
-        self.game_log.insert(0, (text, color))
+        # Store tuple: (text, color, time_elapsed)
+        self.game_log.insert(0, (text, color, time_elapsed))
         if len(self.game_log) > 500:  # prevent unbounded growth
             self.game_log.pop()
         # We do NOT auto-jump to bottom; view stays where the user left it.
@@ -192,7 +197,6 @@ class GameMain:
             "P2": "P2 : ",
             "SUMMARY": "SUMMARY : "
         }
-
         def tag_color(tag: str) -> tuple[int, int, int]:
             return {
                 "GAME": LOG_COLOR_GAME,
@@ -201,16 +205,14 @@ class GameMain:
                 "P1": LOG_COLOR_P1,
                 "P2": LOG_COLOR_P2,
             }.get(tag, UI_TEXT)
-
         def board_label(grid: tuple[int, int] | None) -> str:
             if grid is None:
                 return ""
             row, col = grid
             return f"{chr(ord('A') + col)}{GRID_ROWS - row}"
-
         tag = "GAME"
         message = ""
-
+        actor_health = 0  # Initialize actor's health
         if event == "match_start":
             tag = "GAME"
             message = ("Match {match} starts   Map: {map_label}   P1: {ai1}   P2: {ai2}".format(
@@ -233,6 +235,11 @@ class GameMain:
             end = board_label(kwargs.get("end"))
             distance = kwargs.get("distance", 0)
             message = f"{actor} moves {start} -> {end} ({distance} tiles)"
+            # --- GET ACTOR'S HEALTH FOR MOVE EVENT ---
+            for chara in Character.team1_list + Character.team2_list:
+                if chara.template.get("display_name", "") == actor:
+                    actor_health = chara.template.get("curHP", 0)
+                    break
         elif event == "attack":
             team = kwargs.get("team")
             tag = "P1" if team == 1 else "P2"
@@ -248,6 +255,11 @@ class GameMain:
                     f"(HP before: {hp_before}, after: {hp_cur}/{hp_max})")
             if target_position:
                 message += f" at {target_position}"  # ✅ Append position to message
+            # --- GET ACTOR'S HEALTH FOR ATTACK EVENT ---
+            for chara in Character.team1_list + Character.team2_list:
+                if chara.template.get("display_name", "") == actor:
+                    actor_health = chara.template.get("curHP", 0)
+                    break
         elif event == "heal":
             team = kwargs.get("team")
             tag = "P1" if team == 1 else "P2"
@@ -259,10 +271,17 @@ class GameMain:
             max_hp = kwargs.get("hp_max", 0)
             message = (f"{actor} uses \"{action}\" on {target} - +{amount}"
                        f" (HP {cur}/{max_hp})")
+            # --- GET ACTOR'S HEALTH FOR HEAL EVENT ---
+            for chara in Character.team1_list + Character.team2_list:
+                if chara.template.get("display_name", "") == actor:
+                    actor_health = chara.template.get("curHP", 0)
+                    break
         elif event == "pass":
             team = kwargs.get("team")
             tag = "P1" if team == 1 else "P2"
             message = "Pass turn"
+            # For pass events, we don't have a specific unit name, so we leave actor_health as 0.
+            actor_health = 0
         elif event == "ko":
             team = kwargs.get("team")
             tag = "P1" if team == 1 else "P2"
@@ -286,6 +305,8 @@ class GameMain:
             if hp_max:
                 message_parts.append(f"(HP 0/{hp_max})")
             message = " ".join(part for part in message_parts if part)
+            # --- SET ACTOR'S HEALTH TO 0 FOR KO EVENT ---
+            actor_health = 0
         elif event == "match_over":
             tag = "GAME"
             match_number = kwargs.get("match")
@@ -320,9 +341,14 @@ class GameMain:
             ))
         else:
             message = kwargs.get("message", "")
-
         label = tag_labels.get(tag, "")
-        self.log(f"{label}{message}", tag_color(tag))
+        # --- NEW: Include actor's health in the log entry ---
+        # We'll modify the message to include the actor's health.
+        # This is a temporary fix; ideally, we would store this data separately.
+        if actor_health > 0 and event in ["move", "attack", "heal"]:
+            message = f"{message} (Actor HP: {actor_health})"
+        time_elapsed = kwargs.get("time_elapsed", 0.0)
+        self.log(f"{label}{message}", tag_color(tag), time_elapsed=time_elapsed)
 
     def _get_ai_label(self, team_id: int) -> str:
         if 0 <= team_id < len(self._ai_type_labels):
@@ -399,7 +425,9 @@ class GameMain:
                         actor=data["name"],
                         start=prev_data["grid"],
                         end=data["grid"],
-                        distance=distance
+                        distance=distance,
+                        actor_hp=prev_data["hp"],
+                        time_elapsed=self.cumulative_time
                     )
 
     def _process_ai_logs(self, prev_state: dict[int, dict], current_state: dict[int, dict]) -> None:
@@ -452,7 +480,7 @@ class GameMain:
                     continue
                 if "passes" in line:
                     queue.pop(idx)
-                    self.log_event("pass", team=team)
+                    self.log_event("pass", team=team, time_elapsed=self.cumulative_time)
                     continue
                 if "uses" in line:
                     if len(queue) - idx < 3:
@@ -525,10 +553,11 @@ class GameMain:
                             target=target_name,
                             action=action_name,
                             amount=amount,
-                            hp_before=hp_before,   # ✅ pass actual HP before
+                            hp_before=hp_before,
                             hp_cur=hp_cur,
                             hp_max=hp_max,
-                            target_position=grid_label
+                            target_position=grid_label,
+                            time_elapsed=self.cumulative_time  
                         )
                         if target_id is not None:
                             self._pending_ko_sources[target_id] = {
@@ -549,7 +578,8 @@ class GameMain:
                             action=action_name,
                             amount=abs(amount),
                             hp_cur=hp_cur,
-                            hp_max=hp_max
+                            hp_max=hp_max,
+                            time_elapsed=self.cumulative_time
                         )
                     continue
                 idx += 1
@@ -588,9 +618,9 @@ class GameMain:
                 actor=prev_data.get("name", ""),
                 location=location,
                 hp_max=hp_max,
-                **(source or {})
+                **(source or {}),
+                time_elapsed=self.cumulative_time 
             )
-
     # --------- geometry helper used by render & input ----------
     def _calc_log_geometry(self):
         """Return a dict with log panel & scrollbar geometry and paging info."""
@@ -998,6 +1028,8 @@ class GameMain:
 
     def startMatch(self) -> None:
         self.currentMatch += 1
+        self.cumulative_time = 0.0  
+
         self._ai_log_len = {}
         self._ai_pending_lines.clear()
         self._pending_ko_sources = {}
@@ -1046,25 +1078,13 @@ class GameMain:
                                map_id=self.map_number)
 
         Character.removeAllCharacters()
-        
-        # for i, pos in enumerate(self.field.player_spawns[:3]):
-        #     Character(self.screen,
-        #                 (self.field.boxes_width, self.field.boxes_height),
-        #                 (pos[0], pos[1]),
-        #                 "player" + str(i + 1), type="player")
-        # # Incomprehensible Horror
-        # for i, pos in enumerate(self.field.enemy_spawns):
-        #     Character(self.screen,
-        #                 (self.field.boxes_width, self.field.boxes_height),
-        #                 (pos[0], pos[1]),
-        #                 random.choice(ENEMY_NAMES), type="enemy")
 
         for i, pos in enumerate(self.field.team1_spawns[:3]):
             Character(self.screen,
                         (self.field.boxes_width, self.field.boxes_height),
                         (pos[0], pos[1]),
                         "player" + str(i + 1), team=1)
-        # Incomprehensible Horror
+
         for i, pos in enumerate(self.field.team2_spawns[:3]):
             Character(self.screen,
                         (self.field.boxes_width, self.field.boxes_height),
@@ -1088,28 +1108,22 @@ class GameMain:
         self.last_map_generated_id = actual_map_id
         self.last_map_was_random = map_was_random
 
-        # Position cursor on first team1 character
         self.field.positionCursorOnTeam1Character()
-
         self.GameMaster.setTeams(self.team1_ID, self.team2_ID)
         self.GameMaster.team1.loadField(self.field)
         self.GameMaster.team2.loadField(self.field)
+
         if self.GameMaster.isActiveAIHuman():
             Cursor.state = 0
         else:
             Cursor.state = 6
-        
-                    
         Cursor.state = 5
-
         Cursor.selected_action = -1
 
         self.round = 1
         self.round_title_timer = 0
-
         self.number_action = -1
         self.action_timer = 0
-
         self.p1_dom_count = 0
         self.p2_dom_count = 0
 
@@ -1123,10 +1137,20 @@ class GameMain:
             map_label = 'Unknown'
         self._current_map_label = map_label
 
-        self.log_event('match_start', match=self.currentMatch, map_label=map_label, ai1=ai1_name, ai2=ai2_name)
-        self.log_event('round_begin', round=self.round)
+        # ✅ Log match start with time_elapsed = 0.0 (since match just began)
+        self.log_event('match_start',
+                       match=self.currentMatch,
+                       map_label=map_label,
+                       ai1=ai1_name,
+                       ai2=ai2_name,
+                       time_elapsed=self.cumulative_time)
+
+        # ✅ Log round begin with time_elapsed = 0.0
+        self.log_event('round_begin',
+                       round=self.round,
+                       time_elapsed=self.cumulative_time)
+
         self._init_character_snapshots()
-        # Start at very top (newest first visible)
         self.log_scroll = 0
 
 
@@ -1215,6 +1239,7 @@ class GameMain:
                             break
 
         elif self.game_screen == 1:
+            self.cumulative_time += dt
             geom = self._calc_log_geometry()
             self._sb_last_geometry = geom
 
@@ -1276,7 +1301,7 @@ class GameMain:
                     elif event.key == pygame.K_p:
                         if self.GameMaster.isActiveAIHuman():
                             self.GameMaster.activeAI.turnFinished = True
-                            self.log_event('pass', team=getattr(self.GameMaster.activeAI, 'team', 1))
+                            self.log_event('pass', team=getattr(self.GameMaster.activeAI, 'team', 1), time_elapsed=self.cumulative_time)
                             Cursor.state = 0
                             self.field.select_cursor.show = False
                             self.field.hover_cursor.show = True
@@ -1316,7 +1341,7 @@ class GameMain:
                         # 1) Pass-turn button
                         if self.pass_turn_button_rect.collidepoint(event.pos):
                             self.GameMaster.activeAI.turnFinished = True
-                            self.log_event('pass', team=getattr(self.GameMaster.activeAI, 'team', 1))
+                            self.log_event('pass', team=getattr(self.GameMaster.activeAI, 'team', 1), time_elapsed=self.cumulative_time)
                             Cursor.state = 0
                             self.field.select_cursor.show = False
                             self.field.hover_cursor.show = True
@@ -1674,7 +1699,7 @@ class GameMain:
                     # self.game_state = 'finish enemy action'
 
                     if self.GameMaster.roundFinished:
-                        self.log_event('round_end', round=self.round)
+                        self.log_event('round_end', round=self.round, time_elapsed=self.cumulative_time)
                         # Check win condition
                         team1_win_count = 0
                         team2_win_count = 0
@@ -1718,9 +1743,11 @@ class GameMain:
                             self.game_state = 'show round'
                             self.field.hover_cursor.show = True
                             self.log_event('round_begin', round=self.round)
+                            self._init_character_snapshots()
 
                         if match_winner == 1:
                             self.total_p1_win += 1
+                            self.last_match_duration = self.cumulative_time
                             self.log_event('match_over', match=self.currentMatch, winner='P1', p1_rounds=self.p1_round_wins, p2_rounds=self.p2_round_wins)
                             self.log_event('summary_match', match=self.currentMatch, map_label=self._current_map_label)
                             self.log_event('summary_result', winner=1, p1_rounds=self.p1_round_wins, p2_rounds=self.p2_round_wins)
@@ -1733,6 +1760,7 @@ class GameMain:
                             self._log_series_summary()
                         elif match_winner == 2:
                             self.total_p2_win += 1
+                            self.last_match_duration = self.cumulative_time
                             self.log_event('match_over', match=self.currentMatch, winner='P2', p1_rounds=self.p1_round_wins, p2_rounds=self.p2_round_wins)
                             self.log_event('summary_match', match=self.currentMatch, map_label=self._current_map_label)
                             self.log_event('summary_result', winner=2, p1_rounds=self.p1_round_wins, p2_rounds=self.p2_round_wins)
@@ -2164,7 +2192,12 @@ class GameMain:
             start = self.log_scroll
             end   = min(len(self.game_log), start + max_lines)
 
-            for text, color in self.game_log[start:end]:
+            for log_tuple in self.game_log[start:end]:
+                # Handle both old (text, color) and new (text, color, time) formats
+                if len(log_tuple) == 3:
+                    text, color, _ = log_tuple
+                else:
+                    text, color = log_tuple
                 img = self.font_s.render(text, False, color)
                 self.screen.blit(img, (x, y))
                 y += line_h
@@ -2248,12 +2281,50 @@ class GameMain:
             team1_kills = 0
             team2_kills = 0
             kill_details = []
-
             row = 2
             step = 1
 
+            # --- NEW: Find the last match number and its final round ---
+            last_match_num = 0
+            last_round_num = 0
+            for log_tuple in reversed(self.game_log):
+                if len(log_tuple) == 3:
+                    log_entry, color, time_elapsed = log_tuple
+                else:
+                    log_entry, color = log_tuple
+                    time_elapsed = 0.0 # Process oldest first
+                if "Match" in log_entry and "starts" in log_entry:
+                    try:
+                        match_num = int(log_entry.split("Match ")[1].split()[0])
+                        last_match_num = max(last_match_num, match_num)
+                    except:
+                        pass
+                elif "Round" in log_entry and "begins" in log_entry:
+                    try:
+                        round_num = int(log_entry.split("Round ")[1].split()[0])
+                        # Only update if this round belongs to the last match
+                        if last_match_num > 0: # Ensure we have a valid last match
+                            last_round_num = max(last_round_num, round_num)
+                    except:
+                        pass
+
+            # --- NEW: Flag to indicate we've passed the end of the last match's final round ---
+            reached_final_round_end = False
+
             # Process log from OLDEST to NEWEST (reverse because log is newest-first)
-            for log_entry, color in reversed(self.game_log):
+            for log_tuple in reversed(self.game_log):
+                # Unpack: (text, color, time_elapsed)
+                if len(log_tuple) == 3:
+                    log_entry, color, time_elapsed = log_tuple
+                else:
+                    # Fallback for old-style logs (if any)
+                    log_entry, color = log_tuple
+                    time_elapsed = 0.0
+                # --- NEW: Check if we've already passed the final round end ---
+                if reached_final_round_end:
+                    # Skip this entry for the Game Log sheet
+                    continue
+
                 if "Match" in log_entry and "starts" in log_entry:
                     try:
                         current_match = int(log_entry.split("Match ")[1].split()[0])
@@ -2266,7 +2337,11 @@ class GameMain:
                     except:
                         pass
                     continue
-                elif "Match over" in log_entry or "SUMMARY" in log_entry:
+                # --- NEW: Also skip summary events ---
+                elif "Match over" in log_entry or "SUMMARY" in log_entry or \
+                     "SERIES OVER" in log_entry or "WINNER" in log_entry or \
+                     "Total matches played" in log_entry:
+                    # We'll handle the "round_end" for the final round separately.
                     continue
 
                 parts = log_entry.split(" : ", 1)
@@ -2274,7 +2349,6 @@ class GameMain:
                     continue
                 tag = parts[0]
                 message = parts[1]
-
                 team = 1 if tag == "P1" else (2 if tag == "P2" else "")
                 event = ""
                 action_name = ""
@@ -2285,7 +2359,7 @@ class GameMain:
                 damage = ""
                 heal = ""
                 movement = ""
-                health = ""
+                health = "" # Initialize to empty
                 target_health_before = ""
                 target_health_after = ""
                 target_team = ""
@@ -2303,7 +2377,18 @@ class GameMain:
                             movement = safe_int(dist_part.replace(" tiles)", ""))
                             position = end_pos
                             scenario = f"{unit_name} moves ({start_pos} -> {end_pos})"
-
+                    # --- GET HEALTH FOR MOVE EVENT FROM PREV STATE ---
+                    # Use the _char_snapshots (prev_state) to get health at start of turn
+                    for chara in Character.team1_list + Character.team2_list:
+                        if chara.template.get("display_name", "") == unit_name:
+                            # Try to find the character's state at the beginning of the turn
+                            prev_char_data = self._char_snapshots.get(chara.id)
+                            if prev_char_data:
+                                health = prev_char_data.get("hp", 0)
+                            else:
+                                # Fallback: use current health if snapshot not available
+                                health = chara.template.get("curHP", 0)
+                            break
                 elif "attacks" in message and "(HP before:" in message:
                     event = "attack"
                     if " attacks " in message and " with \"" in message and " - hit for " in message:
@@ -2333,7 +2418,15 @@ class GameMain:
                                         team2_damage_given += damage
                                     scenario = f"{unit_name} attacks {target} with {action_name}"
                                     target_team = 2 if team == 1 else 1
-
+                    # --- GET HEALTH FOR ATTACK EVENT FROM PREV STATE ---
+                    for chara in Character.team1_list + Character.team2_list:
+                        if chara.template.get("display_name", "") == unit_name:
+                            prev_char_data = self._char_snapshots.get(chara.id)
+                            if prev_char_data:
+                                health = prev_char_data.get("hp", 0)
+                            else:
+                                health = chara.template.get("curHP", 0)
+                            break
                 elif "uses" in message and "heal" in message:
                     event = "heal"
                     if " uses \"" in message and " on " in message and " - +" in message:
@@ -2353,7 +2446,15 @@ class GameMain:
                                     target_health_before = target_health_after - heal
                                     target_team = team
                                     scenario = f"{unit_name} heals {target} with {action_name}"
-
+                    # --- GET HEALTH FOR HEAL EVENT FROM PREV STATE ---
+                    for chara in Character.team1_list + Character.team2_list:
+                        if chara.template.get("display_name", "") == unit_name:
+                            prev_char_data = self._char_snapshots.get(chara.id)
+                            if prev_char_data:
+                                health = prev_char_data.get("hp", 0)
+                            else:
+                                health = chara.template.get("curHP", 0)
+                            break
                 elif "is KO" in message:
                     event = "kill"
                     unit_name = message.split(" is KO")[0]
@@ -2375,11 +2476,30 @@ class GameMain:
                     target = unit_name
                     target_team = team
                     scenario = f"{unit_name} is KO"
-
+                    # --- SET HEALTH TO 0 FOR KO EVENT ---
+                    health = 0
                 elif "Pass turn" in message:
                     event = "pass"
                     unit_name = f"T{team}"
                     scenario = f"{unit_name} passes turn"
+                    # --- GET HEALTH FOR PASS EVENT FROM PREV STATE ---
+                    # For pass events, we don't have a specific unit name, so we leave health as 0.
+                    # You could enhance this by tracking the last active unit per team.
+                    health = 0
+
+                # --- NEW: Check for "round_end" event for the last match and round ---
+                if "Round" in log_entry and "ends" in log_entry:
+                    try:
+                        round_num = int(log_entry.split("Round ")[1].split()[0])
+                        # Check if this is the end of the final round of the last match
+                        if current_match == last_match_num and round_num == last_round_num:
+                            # This is the end of the last match's final round.
+                            # Mark that we've reached it.
+                            reached_final_round_end = True
+                            # We still want to include this "round_end" line in the log.
+                            # So, we don't continue here; we process it.
+                    except:
+                        pass
 
                 # Write row
                 log_ws.cell(row=row, column=1, value=step).border = thin_border
@@ -2387,8 +2507,8 @@ class GameMain:
                 log_ws.cell(row=row, column=3, value=current_match).border = thin_border
                 log_ws.cell(row=row, column=4, value=current_round).border = thin_border
                 log_ws.cell(row=row, column=5, value=team).border = thin_border
-                log_ws.cell(row=row, column=6, value=0.0).border = thin_border  # Time placeholder
-                log_ws.cell(row=row, column=7, value=health).border = thin_border
+                log_ws.cell(row=row, column=6, value=time_elapsed).border = thin_border    # Time placeholder
+                log_ws.cell(row=row, column=7, value=health).border = thin_border  # ✅ This will now have the correct value
                 log_ws.cell(row=row, column=8, value=position).border = thin_border
                 log_ws.cell(row=row, column=9, value=event).border = thin_border
                 log_ws.cell(row=row, column=10, value=action_name).border = thin_border
@@ -2400,7 +2520,6 @@ class GameMain:
                 log_ws.cell(row=row, column=16, value=target_health_before).border = thin_border
                 log_ws.cell(row=row, column=17, value=target_health_after).border = thin_border
                 log_ws.cell(row=row, column=18, value=target_team).border = thin_border
-
                 step += 1
                 row += 1
 
@@ -2419,15 +2538,16 @@ class GameMain:
             total_matches_played = max(0, self.currentMatch - 1)
             summary_ws.cell(row, 1, f"Total Matches Played: {total_matches_played}").font = Font(bold=True)
             row += 1
-
-            # ✅ Add Win Rates
+            # Add Total Match Time
+            summary_ws.cell(row, 1, f"Total Match Time (seconds): {self.last_match_duration:.2f}").font = Font(bold=True)
+            row += 1
+            # Add Win Rates
             team1_win_rate = (self.total_p1_win / total_matches_played * 100) if total_matches_played > 0 else 0.0
             team2_win_rate = (self.total_p2_win / total_matches_played * 100) if total_matches_played > 0 else 0.0
             summary_ws.cell(row, 1, f"Team 1 Win Rate: {team1_win_rate:.2f}%").font = Font(bold=True)
             row += 1
             summary_ws.cell(row, 1, f"Team 2 Win Rate: {team2_win_rate:.2f}%").font = Font(bold=True)
             row += 1
-
             summary_ws.cell(row, 1, f"Team 1 Wins: {self.total_p1_win}").font = Font(bold=True)
             row += 1
             summary_ws.cell(row, 1, f"Team 2 Wins: {self.total_p2_win}").font = Font(bold=True)
@@ -2456,7 +2576,7 @@ class GameMain:
             os.makedirs(export_dir, exist_ok=True)
             filename = f"{export_dir}/game_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
             wb.save(filename)
-            print(f"✅ Game log exported to: {filename}")
+            print(f"Game log exported to: {filename}")
 
         except Exception as e:
             print(f"Error exporting game log: {e}")
