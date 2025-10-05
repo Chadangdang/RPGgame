@@ -119,7 +119,8 @@ class GameMain:
         self.endgame_menu_hovered = False
         self.endgame_restart_hovered = False
         self.endgame_export_hovered = False
-        self._endgame_selected_idx = 0  # 0=Menu, 1=Restart, 2=Export
+        # Keyboard selection for endgame buttons; None means no button highlighted yet.
+        self._endgame_selected_idx: int | None = None
         self._prev_endgame_active = False
 
         # --- Pause popup (for human player) ---
@@ -788,12 +789,18 @@ class GameMain:
         if event.type == pygame.KEYDOWN:
             # Left/Right to change selection, Z to confirm
             if event.key == pygame.K_LEFT:
+                if self._endgame_selected_idx is None:
+                    self._endgame_selected_idx = 0
                 self._endgame_selected_idx = (self._endgame_selected_idx - 1) % 3
                 return
             if event.key == pygame.K_RIGHT:
+                if self._endgame_selected_idx is None:
+                    self._endgame_selected_idx = 0
                 self._endgame_selected_idx = (self._endgame_selected_idx + 1) % 3
                 return
             if event.key == pygame.K_z:
+                if self._endgame_selected_idx is None:
+                    self._endgame_selected_idx = 0
                 if self._endgame_selected_idx == 0:
                     self._return_to_menu()
                 elif self._endgame_selected_idx == 1:
@@ -898,12 +905,13 @@ class GameMain:
         self._draw_endgame_button(self.endgame_export_button_rect, 'EXPORT LOG', self.endgame_export_hovered)
 
         # Yellow highlight for endgame button
-        selected_rect = [
-            self.endgame_menu_button_rect,
-            self.endgame_restart_button_rect,
-            self.endgame_export_button_rect,
-        ][self._endgame_selected_idx]
-        pygame.draw.rect(self.screen, YELLOW, selected_rect, 4)
+        if self._endgame_selected_idx is not None:
+            selected_rect = [
+                self.endgame_menu_button_rect,
+                self.endgame_restart_button_rect,
+                self.endgame_export_button_rect,
+            ][self._endgame_selected_idx]
+            pygame.draw.rect(self.screen, YELLOW, selected_rect, 4)
 
     def _draw_endgame_button(self, rect: pygame.Rect, text: str, hovered: bool) -> None:
         fill_color = (255, 255, 255)
@@ -1247,7 +1255,7 @@ class GameMain:
             pause_active = self._is_pause_popup_active()
             # Initialize endgame selection the frame it becomes active
             if endgame_active and not self._prev_endgame_active:
-                self._endgame_selected_idx = 0
+                self._endgame_selected_idx = None
             self._prev_endgame_active = endgame_active
 
             mouse_pos = pygame.mouse.get_pos()
