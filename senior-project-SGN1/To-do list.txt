@@ -1,11 +1,11 @@
-- Move the starting cursor to the empty ❌
-- Made UI clickable ❌
+- Move the starting cursor to the fighter ✅
+- Made UI clickable ✅
 - Can press esc button to close the game ❌
-- Create pause and match result pop up menu ❌
-- Export log button should create a csv file with data from action log. ❌
+- Create pause and match result pop up menu ✅
+- Export log button should create a csv file with data from action log. ✅
 - For human VS AI, made a different outline(ex: yellow, red) for the characters that have already moved or moved & attacked. ❌
 - Scroll bar and drop down for AI selection screen. ❌
-- Add round limit setting. ❌
+- Add round limit setting. ✅
 - Add map selection button and pop up. ❌
 - AI selection menu UI overhaul. ❌
 
