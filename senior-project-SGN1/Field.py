@@ -269,17 +269,41 @@ class Field:
             text_rect = text.get_rect(center=(x, y))
             self.screen.blit(text, text_rect)
 
-        # character renders
+                # character renders (with proper highlights)
         for character in Character.team1_list:
-            character.render(self.getCoordsAtGrid((character.grid)))
-            pygame.draw.rect(self.screen, BLUE, pygame.Rect(self.getCoordsAtGrid((character.grid))[0],
-                                                                   self.getCoordsAtGrid((character.grid))[1],
-                                                                   self.boxes_width+1, self.boxes_height+1), 2)
+            # Draw the character sprite
+            character.render(self.getCoordsAtGrid(character.grid))
+
+            # Position rectangle around the bot
+            gx, gy = character.grid
+            x, y = self.getCoordsAtGrid((gx, gy))
+            rect = pygame.Rect(x, y, self.boxes_width, self.boxes_height)
+
+            # Blue team highlights
+            if character.moved and not character.acted:
+                pygame.draw.rect(self.screen, (90, 170, 255), rect, 3)   # light blue = moved
+            elif character.acted:
+                pygame.draw.rect(self.screen, (30, 110, 220), rect, 3)   # dark blue = acted
+            else:
+                pygame.draw.rect(self.screen, (0, 100, 255), rect, 2)    # idle blue outline
+
         for character in Character.team2_list:
-            character.render(self.getCoordsAtGrid((character.grid)))
-            pygame.draw.rect(self.screen, RED, pygame.Rect(self.getCoordsAtGrid((character.grid))[0],
-                                                                   self.getCoordsAtGrid((character.grid))[1],
-                                                                   self.boxes_width+1, self.boxes_height+1), 2)
+            # Draw the character sprite
+            character.render(self.getCoordsAtGrid(character.grid))
+
+            # Position rectangle around the bot
+            gx, gy = character.grid
+            x, y = self.getCoordsAtGrid((gx, gy))
+            rect = pygame.Rect(x, y, self.boxes_width, self.boxes_height)
+
+            # Red team highlights
+            if character.moved and not character.acted:
+                pygame.draw.rect(self.screen, (255, 160, 160), rect, 3)  # light red = moved
+            elif character.acted:
+                pygame.draw.rect(self.screen, (200, 40, 40), rect, 3)    # dark red = acted
+            else:
+                pygame.draw.rect(self.screen, (255, 0, 0), rect, 2)      # idle red outline
+
 
 
         # Cursors
