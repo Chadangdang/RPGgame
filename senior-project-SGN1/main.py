@@ -1174,6 +1174,11 @@ class GameMain:
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
                         self.game_screen = 0  # Go to AI selection screen
+                                # --- ESC quits only on start menu ---
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        pygame.quit()
+                        sys.exit()
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     if event.button == 1 and self.play_button_hovered:  # Left click on play button
                         self.game_screen = 0  # Go to AI selection screen
@@ -1187,6 +1192,13 @@ class GameMain:
                     if event.key == pygame.K_RETURN:
                         if self.p1_sel_cursor.show and self.p2_sel_cursor.show:
                             self.screen1init()
+                                # --- ESC quits only on start menu ---
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        pygame.quit()
+                        sys.exit()
+
+
                     if event.key == pygame.K_UP:
                         self.menu_cursor.moveBy(event.key)
                     if event.key == pygame.K_DOWN:
