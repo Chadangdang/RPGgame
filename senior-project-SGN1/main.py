@@ -23,6 +23,8 @@ AI_SELECTION_LABELS = (
     'Disable AI'
 )
 
+
+
 # === Board placement (top-left of the 640x640 grid) ===
 # Lower this to move the whole board (and its A-H / 1-8 labels) higher on screen.
 BOARD_POS_X = WIDTH // 2 - 320
@@ -81,6 +83,18 @@ class GameMain:
         # to change the defaults, change this
         self.map_number = 0
         # self.mapNumber = len(self.map_list)  # default is set to random
+
+        # --- Model picker (AI select page) ---
+        self.p1_model_index = 0
+        self.p2_model_index = 0
+        self._show_model_modal = False
+        self._model_modal_for = 1      # 1 = selecting for P1, 2 = P2
+        self._model_hover = -1
+
+    # Buttons for model selection (under AI choices)
+        self._model_btn_p1 = pygame.Rect(360, 590, 260, 40)
+        self._model_btn_p2 = pygame.Rect(630, 590, 260, 40)
+
 
         self.game_state = 'selecting start area'
 
@@ -913,6 +927,46 @@ class GameMain:
             ][self._endgame_selected_idx]
             pygame.draw.rect(self.screen, YELLOW, selected_rect, 4)
 
+    def _model_modal_geometry(self):
+        """Rects used by the Model Select popup."""
+        modal_rect = pygame.Rect(220, 140, 800, 460)
+        list_rect  = pygame.Rect(modal_rect.x + 40, modal_rect.y + 80, 380, 300)
+        confirm_btn = pygame.Rect(modal_rect.right - 200, modal_rect.bottom - 70, 160, 40)
+        return modal_rect, list_rect, confirm_btn
+
+    def _render_model_modal(self):
+        """Draw the Model Select popup."""
+        mask = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        mask.fill((0, 0, 0, 120))
+        self.screen.blit(mask, (0, 0))
+
+        modal_rect, list_rect, confirm_btn = self._model_modal_geometry()
+        pygame.draw.rect(self.screen, (245, 238, 228), modal_rect, border_radius=10)
+        pygame.draw.rect(self.screen, (30, 30, 30), modal_rect, 3, border_radius=10)
+
+        title = self.font_m.render(f"Select Model for P{self._model_modal_for}", False, (0, 0, 0))
+        self.screen.blit(title, title.get_rect(midtop=(modal_rect.centerx, modal_rect.y + 12)))
+
+        mouse_pos = pygame.mouse.get_pos()
+        self._model_hover = -1
+        item_h = 44
+        gap = 10
+        top_y = list_rect.y
+        for i, name in enumerate(AI_SELECTION_LABELS):
+            r = pygame.Rect(list_rect.x, top_y + i*(item_h + gap), list_rect.w, item_h)
+            hovered = r.collidepoint(mouse_pos)
+            if self._model_modal_for == 1:
+                selected = (self.p1_model_index == i)
+            else:
+                selected = (self.p2_model_index == i)
+            if hovered:
+                self._model_hover = i
+            self._draw_button(r, name, hovered, selected)
+
+        hovered = confirm_btn.collidepoint(mouse_pos)
+        self._draw_button(confirm_btn, "SELECT", hovered, ok=True)
+         
+
     def _draw_endgame_button(self, rect: pygame.Rect, text: str, hovered: bool) -> None:
         fill_color = (255, 255, 255)
         border_color = (0, 0, 0)
@@ -1183,80 +1237,112 @@ class GameMain:
                     if event.button == 1 and self.play_button_hovered:  # Left click on play button
                         self.game_screen = 0  # Go to AI selection screen
                         
-        elif self.game_screen == 0:       # AI select screen
+        elif self.game_screen == 0:  # AI select screen
             for event in events:
+                # --- Window close ---
                 if event.type == pygame.QUIT:
                     pygame.quit()
                     sys.exit()
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_RETURN:
-                        if self.p1_sel_cursor.show and self.p2_sel_cursor.show:
-                            self.screen1init()
-                                # --- ESC quits only on start menu ---
-                if event.type == pygame.KEYDOWN:
+
+                # --- Keyboard (single KEYDOWN block) ---
+                elif event.type == pygame.KEYDOWN:
+                    # ESC exits the app on AI-select page
                     if event.key == pygame.K_ESCAPE:
                         pygame.quit()
                         sys.exit()
 
+                    # ENTER starts when both sides chosen
+                    elif event.key == pygame.K_RETURN:
+                        if self.p1_sel_cursor.show and self.p2_sel_cursor.show:
+                            self.screen1init()
 
-                    if event.key == pygame.K_UP:
+                    # Arrow keys move the hover menu cursor
+                    elif event.key in (pygame.K_UP, pygame.K_DOWN, pygame.K_LEFT, pygame.K_RIGHT):
                         self.menu_cursor.moveBy(event.key)
-                    if event.key == pygame.K_DOWN:
-                        self.menu_cursor.moveBy(event.key)
-                    if event.key == pygame.K_LEFT:
-                        self.menu_cursor.moveBy(event.key)
-                    if event.key == pygame.K_RIGHT:
-                        self.menu_cursor.moveBy(event.key)
-                    if event.key == pygame.K_z:
-                        if self.menu_cursor.grid[1] == 0:
-                            self.p1_sel_cursor.moveTo(self.menu_cursor.grid)
+
+                    # Z to confirm selection into the column you're on
+                    elif event.key == pygame.K_z:
+                        # menu_cursor.grid == (row_index, col_index) where col 0 = P1, col 1 = P2
+                        row, col = self.menu_cursor.grid
+                        if col == 0:
+                            self.p1_sel_cursor.moveTo((row, 0))
                             self.p1_sel_cursor.show = True
-                        elif self.menu_cursor.grid[1] == 1:
-                            self.p2_sel_cursor.moveTo(self.menu_cursor.grid)
+                        elif col == 1:
+                            self.p2_sel_cursor.moveTo((row, 1))
                             self.p2_sel_cursor.show = True
-                    if event.key == pygame.K_a:
+
+                    # A toggles auto mode
+                    elif event.key == pygame.K_a:
                         self.isAuto = not self.isAuto
-                    if event.key == pygame.K_m:
+
+                    # M cycles map index
+                    elif event.key == pygame.K_m:
                         self.map_number += 1
                         if self.map_number > len(self.map_list):
                             self.map_number = 0
-                if event.type == pygame.MOUSEBUTTONDOWN:
-                    if event.button == 1 and self._match_limit_slider_rect.collidepoint(event.pos):
-                        self._match_limit_slider_dragging = True
-                        self.match_limit = self._match_limit_value_from_pos(event.pos[0])
-                if event.type == pygame.MOUSEBUTTONUP:
-                    if event.button == 1:
-                        self._match_limit_slider_dragging = False
-                if event.type == pygame.MOUSEMOTION:
-                    if self._match_limit_slider_dragging:
-                        self.match_limit = self._match_limit_value_from_pos(event.pos[0])
-                        
-                # Mouse: make all 10 AI type buttons clickable
-                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    mx, my = event.pos
-                    # Left column (Player 1)
-                    left_x = WIDTH // 4 - 210
-                    for i in range(5):
-                        rect = pygame.Rect(left_x, 200 + i * 90, 420, 60)
-                        if rect.collidepoint(mx, my):
-                            # Select AI for Player 1
-                            self.p1_sel_cursor.moveTo((i, 0))
-                            self.p1_sel_cursor.show = True
-                            # Move the yellow menu cursor to the clicked button (left column)
-                            self.menu_cursor.moveTo((i, 0))
-                            break
 
-                    # Right column (Player 2)
-                    right_x = WIDTH // 2 + WIDTH // 4 - 210
-                    for i in range(5):
-                        rect = pygame.Rect(right_x, 200 + i * 90, 420, 60)
-                        if rect.collidepoint(mx, my):
-                            # Select AI for Player 2
-                            self.p2_sel_cursor.moveTo((i, 0))
-                            self.p2_sel_cursor.show = True
-                            # Move the yellow menu cursor to the clicked button (right column)
-                            self.menu_cursor.moveTo((i, 1))
-                            break
+                # --- Mouse: left button down (slider OR AI buttons) ---
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    mx, my = event.pos
+
+                    # 1) Match-limit slider grab (guarded so it won't crash if rect/helper missing)
+                    if hasattr(self, "_match_limit_slider_rect") and self._match_limit_slider_rect.collidepoint(mx, my):
+                        self._match_limit_slider_dragging = True
+                        if hasattr(self, "_match_limit_value_from_pos"):
+                            self.match_limit = self._match_limit_value_from_pos(mx)
+
+                    else:
+                        # 2) Clickable AI choices (both columns)
+                        y0, h_gap = 200, 90
+                        btn_w, btn_h = 420, 60
+
+                        # Left column (Player 1)
+                        left_x = WIDTH // 4 - 210
+                        for i in range(5):
+                            rect = pygame.Rect(left_x, y0 + i * h_gap, btn_w, btn_h)
+                            if rect.collidepoint(mx, my):
+                                self.p1_sel_cursor.moveTo((i, 0))
+                                self.p1_sel_cursor.show = True
+                                self.menu_cursor.moveTo((i, 0))
+                                break
+                        else:
+                            # Right column (Player 2) — only checked if left column wasn't clicked
+                            right_x = WIDTH // 2 + WIDTH // 4 - 210
+                            for i in range(5):
+                                rect = pygame.Rect(right_x, y0 + i * h_gap, btn_w, btn_h)
+                                if rect.collidepoint(mx, my):
+                                    self.p2_sel_cursor.moveTo((i, 1))
+                                    self.p2_sel_cursor.show = True
+                                    self.menu_cursor.moveTo((i, 1))
+                                    break
+                
+                # --- Model Select Button ---
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    mx, my = event.pos                    
+                    # Model select buttons (below AI choices)
+                    p1_model_rect = pygame.Rect(WIDTH // 4 - 125, 650, 250, 50)
+                    p2_model_rect = pygame.Rect(WIDTH * 3 // 4 - 125, 650, 250, 50)
+                    # Player 1 Model Button
+                    if p1_model_rect.collidepoint(mx, my):
+                        self._model_modal_for = 1
+                        self._show_model_modal = True   # ✅ use your existing variable name
+                    # Player 2 Model Button
+                    elif p2_model_rect.collidepoint(mx, my):
+                        self._model_modal_for = 2
+                        self._show_model_modal = True   # ✅ use the same variable
+    
+
+                # --- Mouse: left button up (release slider) ---
+                elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                    if hasattr(self, "_match_limit_slider_dragging") and self._match_limit_slider_dragging:
+                        self._match_limit_slider_dragging = False
+
+                # --- Mouse: move (while dragging slider) ---
+                elif event.type == pygame.MOUSEMOTION:
+                    if hasattr(self, "_match_limit_slider_dragging") and self._match_limit_slider_dragging:
+                        if hasattr(self, "_match_limit_value_from_pos"):
+                            self.match_limit = self._match_limit_value_from_pos(event.pos[0])
+
 
         elif self.game_screen == 1:
             self.cumulative_time += dt
