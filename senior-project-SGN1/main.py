@@ -57,7 +57,17 @@ class GameMain:
 
     def __init__(self) -> None:
         pygame.init()
-        self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
+        # --- Scaling/display setup ---
+        self.scale: float = 1.0  # 1.0 = desktop/default, <1.0 for laptops/macbooks
+        # Center window on screen before creating it
+        os.environ['SDL_VIDEO_CENTERED'] = '1'
+        self.display = pygame.display.set_mode((WIDTH, HEIGHT))  # actual OS window
+        # Render everything to a base canvas at the logical/original resolution,
+        # then scale to the window size when presenting.
+        self.screen = pygame.Surface((WIDTH, HEIGHT))
+        # Save original mouse func and install a patch that returns base-space coords
+        self._orig_mouse_get_pos = pygame.mouse.get_pos
+        self._install_mouse_patch()
 
         self.game_screen = -1
         # -1 = Start Screen
@@ -71,6 +81,9 @@ class GameMain:
         # Play button properties
         self.play_button_rect = pygame.Rect(510, 405, 250, 100)
         self.play_button_hovered = False
+        # Laptop/Macbook button to scale window down for smaller screens
+        self.laptop_button_rect = pygame.Rect(220, 405, 250, 55)
+        self.laptop_button_hovered = False
 
         self.menu_cursor = HoverMenuCursor(self.screen, (420, 60), (5, 2))
         self.p1_sel_cursor = SelectMenuCursor(self.screen, (420, 60), (5, 1))
@@ -179,6 +192,49 @@ class GameMain:
         self.cumulative_time = 0.0
         self.match_start_time = 0.0
         self.last_match_duration = 0.0       
+
+    # ---- scaling helpers ----
+    def _install_mouse_patch(self) -> None:
+        """Patch pygame.mouse.get_pos to return base-space coords (divide by scale)."""
+        orig = self._orig_mouse_get_pos
+        def _get_pos():
+            x, y = orig()
+            s = self.scale if self.scale != 0 else 1.0
+            return int(x / s), int(y / s)
+        pygame.mouse.get_pos = _get_pos
+
+    def _apply_scale(self, scale: float) -> None:
+        """Apply a new scale: resize the OS window; game still renders to base surface."""
+        self.scale = max(0.6, min(1.0, float(scale)))  # clamp between 0.6 and 1.0
+        new_size = (int(WIDTH * self.scale), int(HEIGHT * self.scale))
+        # Re-center the window whenever we recreate it
+        os.environ['SDL_VIDEO_CENTERED'] = '1'
+        self.display = pygame.display.set_mode(new_size)
+        self._install_mouse_patch()
+
+    def _scale_for_laptop(self) -> float:
+        """Calculate a scale so the window is strictly smaller than 1280x1040."""
+        max_w, max_h = 1280, 1040
+        # Compute the largest scale that fits within the bounds
+        s = min(max_w / float(WIDTH), max_h / float(HEIGHT), 1.0)
+        # Nudge a tiny bit smaller to be strictly under the limits
+        s = min(s, 0.75)
+        return max(0.5, s)
+
+    def _scale_events_to_base(self, events: list[pygame.event.Event]) -> list[pygame.event.Event]:
+        """Return a copy of events with .pos mapped into base-space (divide by scale)."""
+        out: list[pygame.event.Event] = []
+        for e in events:
+            d = getattr(e, 'dict', {}).copy()
+            if 'pos' in d and isinstance(d['pos'], (tuple, list)):
+                x, y = d['pos']
+                s = self.scale if self.scale != 0 else 1.0
+                d['pos'] = (int(x / s), int(y / s))
+                e2 = pygame.event.Event(e.type, d)
+                out.append(e2)
+            else:
+                out.append(e)
+        return out
 
     # --------- logging helper ----------
     def log(self, text: str, color=(0, 0, 0), time_elapsed=0.0) -> None:
@@ -1163,9 +1219,15 @@ class GameMain:
 
 
     def update(self, dt: float, events: list[pygame.event.Event]) -> None:
+        # Normalize event coordinates to base space so hit-tests still work when scaled
+        events = self._scale_events_to_base(list(events))
         if self.game_screen == -1:      # Start screen
+            # Reposition Laptop/Macbook button to be under the "X / Right Click : Cancel" text
+            cancel_text_h = self.font_s.size("X / Right Click : Cancel")[1]
+            self.laptop_button_rect.topleft = (290, 667 + cancel_text_h + 30)
             mouse_pos = pygame.mouse.get_pos()
             self.play_button_hovered = self.play_button_rect.collidepoint(mouse_pos)
+            self.laptop_button_hovered = self.laptop_button_rect.collidepoint(mouse_pos)
 
             for event in events:
                 if event.type == pygame.QUIT:
@@ -1177,6 +1239,13 @@ class GameMain:
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     if event.button == 1 and self.play_button_hovered:  # Left click on play button
                         self.game_screen = 0  # Go to AI selection screen
+                    # Apply laptop scaling when clicking the Laptop/Macbook button
+                    if event.button == 1 and self.laptop_button_rect.collidepoint(event.pos):
+                        # Toggle: if currently scaled down, restore to 1.0; otherwise scale for laptop
+                        if self.scale < 0.99:
+                            self._apply_scale(1.0)
+                        else:
+                            self._apply_scale(self._scale_for_laptop())
                         
         elif self.game_screen == 0:       # AI select screen
             for event in events:
@@ -1828,6 +1897,20 @@ class GameMain:
             play_text = self.font_m.render("PLAY", False, (50, 50, 50))
             text_rect = play_text.get_rect(center=(self.play_button_rect.centerx, self.play_button_rect.centery + 5))
             self.screen.blit(play_text, text_rect)
+        
+            # Draw Laptop/Macbook button to scale the window smaller
+            lb_color = (255, 255, 255) if self.laptop_button_hovered else (235, 235, 235)
+            pygame.draw.rect(self.screen, lb_color, self.laptop_button_rect)
+            pygame.draw.rect(self.screen, BLACK, self.laptop_button_rect, 2)
+            lb_text = self.font_s.render("Toggle Resolution", False, (50, 50, 50))
+            lb_rect = lb_text.get_rect(center=self.laptop_button_rect.center)
+            self.screen.blit(lb_text, lb_rect)
+        
+            # Show current resolution under the toggle button, left-aligned with the button
+            cur_w, cur_h = self.display.get_size()
+            res_text = self.font_s.render(f"Resolution: {cur_w}x{cur_h}", False, (0, 0, 0))
+            res_rect = res_text.get_rect(topleft=(self.laptop_button_rect.left, self.laptop_button_rect.bottom + 15))
+            self.screen.blit(res_text, res_rect)
             
             # "Control :"
             Control_text = self.font_s.render("Control :", False, WHITE)
@@ -2230,6 +2313,10 @@ class GameMain:
                 self._render_endgame_popup(geom)
             elif self._is_pause_popup_active():
                 self._render_pause_popup(geom)
+        
+        # --- Present base canvas to the OS window (scaled if needed) ---
+        scaled_surface = pygame.transform.smoothscale(self.screen, self.display.get_size())
+        self.display.blit(scaled_surface, (0, 0))
                 
     def export_game_log(self) -> None:
         """Export the game log to an Excel file with 'Game Log' and 'Match Summary' sheets."""
