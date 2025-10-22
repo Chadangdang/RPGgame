@@ -2099,12 +2099,12 @@ class GameMain:
             self.screen.blit(unit_menu_text, unit_menu_text.get_rect(topleft=(unit_rect.x + 10, unit_rect.y + 10)))
             if (chara := self.field.hover_cursor.getChara()) is not None:
                 unit_info = self.font_s.render(chara.template['display_name'], False, (0, 0, 0))
-                self.screen.blit(unit_info, unit_info.get_rect(topleft=(unit_rect.x + 15, unit_rect.y + 40)))
+                self.screen.blit(unit_info, unit_info.get_rect(topleft=(unit_rect.x + 10, unit_rect.y + 40)))
                 unit_info = self.font_s.render(
                     f"HP : {chara.template['curHP']}/{chara.template['maxHP']}", False, (0, 0, 0))
-                self.screen.blit(unit_info, unit_info.get_rect(topleft=(unit_rect.x + 15, unit_rect.y + 65)))
+                self.screen.blit(unit_info, unit_info.get_rect(topleft=(unit_rect.x + 10, unit_rect.y + 65)))
                 unit_info = self.font_s.render(f"Movement : {chara.template['movement']}", False, (0, 0, 0))
-                self.screen.blit(unit_info, unit_info.get_rect(topleft=(unit_rect.x + 15, unit_rect.y + 90)))
+                self.screen.blit(unit_info, unit_info.get_rect(topleft=(unit_rect.x + 10, unit_rect.y + 90)))
                 if chara in Character.team1_list:
                     if not chara.moved:
                         text = "Movement available"
@@ -2113,7 +2113,7 @@ class GameMain:
                     else:
                         text = "Turn completed"
                     unit_info = self.font_s.render(text, False, (0, 0, 0))
-                    self.screen.blit(unit_info, unit_info.get_rect(topleft=(unit_rect.x + 15, unit_rect.y + 115)))
+                    self.screen.blit(unit_info, unit_info.get_rect(topleft=(unit_rect.x + 10, unit_rect.y + 115)))
 
             # Terrain Info
             pygame.draw.rect(self.screen, (0, 0, 0), terrain_rect, 2)
@@ -2123,19 +2123,19 @@ class GameMain:
             box = self.field.getHoveredBoxInfo()
             terrain_name = self.font_s.render(box.terrain_name, False, (0, 0, 0))
             terrain_desc = self.font_s.render(box.terrain_desc, False, (0, 0, 0))
-            self.screen.blit(terrain_name, terrain_name.get_rect(topleft=(terrain_rect.x + 15, terrain_rect.y + 40)))
-            self.screen.blit(terrain_desc, terrain_desc.get_rect(topleft=(terrain_rect.x + 15, terrain_rect.y + 70)))
+            self.screen.blit(terrain_name, terrain_name.get_rect(topleft=(terrain_rect.x + 10, terrain_rect.y + 40)))
+            self.screen.blit(terrain_desc, terrain_desc.get_rect(topleft=(terrain_rect.x + 10, terrain_rect.y + 70)))
 
             # Objective Info
             pygame.draw.rect(self.screen, (0, 0, 0), objective_rect, 2)
             objective_menu_text = self.font_s.render("Objective Info", False, (0, 0, 0))
             self.screen.blit(objective_menu_text, objective_menu_text.get_rect(topleft=(objective_rect.x + 10, objective_rect.y + 10)))
             text = self.font_s.render(f'Have units stand', False, (0, 0, 0))
-            self.screen.blit(text, text.get_rect(topleft=(objective_rect.x + 15, objective_rect.y + 40)))
+            self.screen.blit(text, text.get_rect(topleft=(objective_rect.x + 10, objective_rect.y + 40)))
             text = self.font_s.render(f'in objective area', False, (0, 0, 0))
-            self.screen.blit(text, text.get_rect(topleft=(objective_rect.x + 15, objective_rect.y + 65)))
+            self.screen.blit(text, text.get_rect(topleft=(objective_rect.x + 10, objective_rect.y + 65)))
             text = self.font_s.render(f'more than enemy.', False, (0, 0, 0))
-            self.screen.blit(text, text.get_rect(topleft=(objective_rect.x + 15, objective_rect.y + 90)))
+            self.screen.blit(text, text.get_rect(topleft=(objective_rect.x + 10, objective_rect.y + 90)))
 
             # Game State Indicator (Will be hide for now)
             game_state_text = self.font_s.render(f'{self.game_state}', False, (0, 0, 0))

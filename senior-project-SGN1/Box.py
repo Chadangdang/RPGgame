@@ -37,11 +37,11 @@ class Box:
             case 4:  # Player Spawn
                 self.color = BLUE
                 self.terrain_name = "Player Spawn"
-                self.terrain_desc = "Position your units"
+                self.terrain_desc = "Player 1 units area"
             case 5:  # Enemy Spawn
                 self.color = RED
                 self.terrain_name = "Enemy Spawn"
-                self.terrain_desc = "Position enemy units"
+                self.terrain_desc = "Player 2 units area"
 
         pygame.draw.rect(self.screen, self.color, self.rect)
 
