@@ -18,7 +18,7 @@ class Box:
         match self.terrain:
             case 0:  # Nothing
                 self.color = WHITE
-                self.terrain_name = ""
+                self.terrain_name = "Empty Field"
                 self.terrain_desc = ""
             case 1:  # Tree
                 self.color = GREEN

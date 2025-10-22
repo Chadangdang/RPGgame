@@ -162,6 +162,9 @@ class GameMain:
         # Pass player turn button
         self.pass_turn_button_rect = pygame.Rect(987, 620, 245, 45)
         self.pass_turn_button_hovered = False
+        # Pause button
+        self.pause_game_button_rect = pygame.Rect(40, 40, 260, 56)
+        self.pause_game_button_hovered = False
         # --- Game Log store ---
         # store tuples: (text, color)
         self.game_log: list[tuple[str, tuple[int, int, int]]] = []
@@ -1328,20 +1331,24 @@ class GameMain:
             self._prev_endgame_active = endgame_active
 
             mouse_pos = pygame.mouse.get_pos()
+            show_pause_button = (self.team1_ID == 0)
             if endgame_active:
                 self.pass_turn_button_hovered = False
+                self.pause_game_button_hovered = False
                 self.endgame_menu_hovered = self.endgame_menu_button_rect.collidepoint(mouse_pos)
                 self.endgame_restart_hovered = self.endgame_restart_button_rect.collidepoint(mouse_pos)
                 self.endgame_export_hovered = self.endgame_export_button_rect.collidepoint(mouse_pos)
                 self._reset_pause_hover_states()
             elif pause_active:
                 self.pass_turn_button_hovered = False
+                self.pause_game_button_hovered = False
                 self.pause_resume_hovered = self.pause_resume_button_rect.collidepoint(mouse_pos)
                 self.pause_restart_hovered = self.pause_restart_button_rect.collidepoint(mouse_pos)
                 self.pause_menu_hovered = self.pause_menu_button_rect.collidepoint(mouse_pos)
                 self._reset_endgame_hover_states()
             else:
                 self.pass_turn_button_hovered = self.pass_turn_button_rect.collidepoint(mouse_pos)
+                self.pause_game_button_hovered = (show_pause_button and self.pause_game_button_rect.collidepoint(mouse_pos))
                 self._reset_endgame_hover_states()
                 self._reset_pause_hover_states()
 
@@ -1415,6 +1422,11 @@ class GameMain:
                             continue
 
                     if event.button == 1 and self.GameMaster.isActiveAIHuman():
+                        # 0) Pause button
+                        if (self.team1_ID == 0) and self.pause_game_button_rect.collidepoint(event.pos):
+                            self._pause_active = True
+                            self._pause_selected_idx = 0
+                            continue
                         # 1) Pass-turn button
                         if self.pass_turn_button_rect.collidepoint(event.pos):
                             self.GameMaster.activeAI.turnFinished = True
@@ -2063,25 +2075,36 @@ class GameMain:
 
             self.field.render()
 
-            # Render Page
+            # Left column UI: optional Pause button + compact info panels
+            left_x, left_w = 40, 260
+            show_pause_button = (self.team1_ID == 0)
+            # Draw Pause button
+            if show_pause_button:
+                pygame.draw.rect(self.screen, (235, 235, 235), self.pause_game_button_rect)
+                pygame.draw.rect(self.screen, (0, 0, 0), self.pause_game_button_rect, 1)
+                if self.pause_game_button_hovered:
+                    pygame.draw.rect(self.screen, YELLOW, self.pause_game_button_rect, 3)
+                pause_text = self.font_s.render('Pause', False, (0, 0, 0))
+                self.screen.blit(pause_text, pause_text.get_rect(center=self.pause_game_button_rect.center))
+
+            # Panel positions/heights
+            base_y = self.pause_game_button_rect.bottom + 10 if show_pause_button else 40
+            unit_rect = pygame.Rect(left_x, base_y, left_w, 140)
+            terrain_rect = pygame.Rect(left_x, unit_rect.bottom + 10, left_w, 140)
+            objective_rect = pygame.Rect(left_x, terrain_rect.bottom + 10, left_w, 220)
+
             # Unit Info
-            pygame.draw.rect(self.screen, (0, 0, 0), pygame.Rect(40, 40, 260, 180), 2)
+            pygame.draw.rect(self.screen, (0, 0, 0), unit_rect, 2)
             unit_menu_text = self.font_s.render("Unit Info", False, (0, 0, 0))
-            text_rect = unit_menu_text.get_rect(topleft=(50, 50))
-            self.screen.blit(unit_menu_text, text_rect)
+            self.screen.blit(unit_menu_text, unit_menu_text.get_rect(topleft=(unit_rect.x + 10, unit_rect.y + 10)))
             if (chara := self.field.hover_cursor.getChara()) is not None:
-                # if self.field.hover_cursor.getChara().row == self.field.hover_cursor.sel_row and self.field.hover_cursor.getChara().col == self.field.hover_cursor.sel_col:
                 unit_info = self.font_s.render(chara.template['display_name'], False, (0, 0, 0))
-                text_rect = unit_info.get_rect(topleft=(55, 80))
-                self.screen.blit(unit_info, text_rect)
+                self.screen.blit(unit_info, unit_info.get_rect(topleft=(unit_rect.x + 15, unit_rect.y + 40)))
                 unit_info = self.font_s.render(
-                    f"HP : {chara.template['curHP']}/{chara.template['maxHP']}", False,
-                    (0, 0, 0))
-                text_rect = unit_info.get_rect(topleft=(55, 105))
-                self.screen.blit(unit_info, text_rect)
+                    f"HP : {chara.template['curHP']}/{chara.template['maxHP']}", False, (0, 0, 0))
+                self.screen.blit(unit_info, unit_info.get_rect(topleft=(unit_rect.x + 15, unit_rect.y + 65)))
                 unit_info = self.font_s.render(f"Movement : {chara.template['movement']}", False, (0, 0, 0))
-                text_rect = unit_info.get_rect(topleft=(55, 130))
-                self.screen.blit(unit_info, text_rect)
+                self.screen.blit(unit_info, unit_info.get_rect(topleft=(unit_rect.x + 15, unit_rect.y + 90)))
                 if chara in Character.team1_list:
                     if not chara.moved:
                         text = "Movement available"
@@ -2090,47 +2113,29 @@ class GameMain:
                     else:
                         text = "Turn completed"
                     unit_info = self.font_s.render(text, False, (0, 0, 0))
-                    text_rect = unit_info.get_rect(topleft=(55, 155))
-                    self.screen.blit(unit_info, text_rect)
+                    self.screen.blit(unit_info, unit_info.get_rect(topleft=(unit_rect.x + 15, unit_rect.y + 115)))
 
             # Terrain Info
-            pygame.draw.rect(self.screen, (0, 0, 0), pygame.Rect(40, 240, 260, 180), 2)
+            pygame.draw.rect(self.screen, (0, 0, 0), terrain_rect, 2)
             terrain_menu_text = self.font_s.render("Terrain Info", False, (0, 0, 0))
-            text_rect = terrain_menu_text.get_rect(topleft=(50, 250))
-            self.screen.blit(terrain_menu_text, text_rect)
+            self.screen.blit(terrain_menu_text, terrain_menu_text.get_rect(topleft=(terrain_rect.x + 10, terrain_rect.y + 10)))
 
             box = self.field.getHoveredBoxInfo()
-
             terrain_name = self.font_s.render(box.terrain_name, False, (0, 0, 0))
             terrain_desc = self.font_s.render(box.terrain_desc, False, (0, 0, 0))
-
-            self.screen.blit(terrain_name, terrain_name.get_rect(topleft=(55, 280)))
-            self.screen.blit(terrain_desc, terrain_desc.get_rect(topleft=(55, 310)))
-
-            # box_under_cursor = self.get_box_under_cursor()
-            #
-            # if box_under_cursor:
-            #     terrain_name = box_under_cursor.terrain_name
-            #     terrain_info_text = self.font_s.render(f"{terrain_name}", False, (0, 0, 0))
-            #     self.screen.blit(terrain_info_text, (50, 280))
-            # else:
-            #     terrain_info_text = self.font_s.render("No terrain selected", False, (0, 0, 0))
-            #     self.screen.blit(terrain_info_text, (50, 280))
+            self.screen.blit(terrain_name, terrain_name.get_rect(topleft=(terrain_rect.x + 15, terrain_rect.y + 40)))
+            self.screen.blit(terrain_desc, terrain_desc.get_rect(topleft=(terrain_rect.x + 15, terrain_rect.y + 70)))
 
             # Objective Info
-            pygame.draw.rect(self.screen, (0, 0, 0), pygame.Rect(40, 440, 260, 240), 2)
+            pygame.draw.rect(self.screen, (0, 0, 0), objective_rect, 2)
             objective_menu_text = self.font_s.render("Objective Info", False, (0, 0, 0))
-            text_rect = objective_menu_text.get_rect(topleft=(50, 450))
-            self.screen.blit(objective_menu_text, text_rect)
+            self.screen.blit(objective_menu_text, objective_menu_text.get_rect(topleft=(objective_rect.x + 10, objective_rect.y + 10)))
             text = self.font_s.render(f'Have units stand', False, (0, 0, 0))
-            text_rect = text.get_rect(topleft=(55, 480))
-            self.screen.blit(text, text_rect)
+            self.screen.blit(text, text.get_rect(topleft=(objective_rect.x + 15, objective_rect.y + 40)))
             text = self.font_s.render(f'in objective area', False, (0, 0, 0))
-            text_rect = text.get_rect(topleft=(55, 505))
-            self.screen.blit(text, text_rect)
+            self.screen.blit(text, text.get_rect(topleft=(objective_rect.x + 15, objective_rect.y + 65)))
             text = self.font_s.render(f'more than enemy.', False, (0, 0, 0))
-            text_rect = text.get_rect(topleft=(55, 530))
-            self.screen.blit(text, text_rect)
+            self.screen.blit(text, text.get_rect(topleft=(objective_rect.x + 15, objective_rect.y + 90)))
 
             # Game State Indicator (Will be hide for now)
             game_state_text = self.font_s.render(f'{self.game_state}', False, (0, 0, 0))
