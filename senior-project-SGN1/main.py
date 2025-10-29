@@ -986,7 +986,12 @@ class GameMain:
         label_rect = label.get_rect(center=rect.center)
         self.screen.blit(label, label_rect)
 
-    # Pause popup
+    # Pause button available when one side is player input
+    def _is_pause_button_available(self) -> bool:
+        p1_human = self.team1_ID == 0
+        p2_human = self.team2_ID == 0
+        return p1_human or p2_human
+
     def _is_pause_popup_active(self) -> bool:
         return self._pause_active and not self._is_endgame_popup_active()
 
@@ -1331,7 +1336,7 @@ class GameMain:
             self._prev_endgame_active = endgame_active
 
             mouse_pos = pygame.mouse.get_pos()
-            show_pause_button = (self.team1_ID == 0)
+            show_pause_button = self._is_pause_button_available()
             if endgame_active:
                 self.pass_turn_button_hovered = False
                 self.pause_game_button_hovered = False
@@ -1423,7 +1428,7 @@ class GameMain:
 
                     if event.button == 1 and self.GameMaster.isActiveAIHuman():
                         # 0) Pause button
-                        if (self.team1_ID == 0) and self.pause_game_button_rect.collidepoint(event.pos):
+                        if self._is_pause_button_available() and self.pause_game_button_rect.collidepoint(event.pos):
                             self._pause_active = True
                             self._pause_selected_idx = 0
                             continue
@@ -2077,7 +2082,7 @@ class GameMain:
 
             # Left column UI: optional Pause button + compact info panels
             left_x, left_w = 40, 260
-            show_pause_button = (self.team1_ID == 0)
+            show_pause_button = self._is_pause_button_available()
             # Draw Pause button
             if show_pause_button:
                 pygame.draw.rect(self.screen, (235, 235, 235), self.pause_game_button_rect)
