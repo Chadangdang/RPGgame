@@ -114,11 +114,29 @@ class GameMain:
         self.font_menu_label = pygame.font.Font('resource/font.ttf', 26)
 
         # --- Map selection UI geometry/state ---
-        self._map_select_button_rect = pygame.Rect(1002, 943, 247, 52)
-        self._map_preview_thumb_rect = pygame.Rect(809, 893, 151, 150)
-        self._map_popup_rect = pygame.Rect(108, 96, 1063, 907)
-        self._map_popup_preview_rect = pygame.Rect(653, 151, 461, 459)
-        self._map_popup_select_rect = pygame.Rect(789, 693, 219, 53)
+        self._map_select_button_rect = pygame.Rect(995, 903, 220, 48)
+        self._map_preview_thumb_rect = pygame.Rect(800, 853, 151, 150)
+
+        popup_width, popup_height = 1063, 907
+        popup_x = (WIDTH - popup_width) // 2
+        popup_y = (HEIGHT - popup_height) // 2
+        self._map_popup_rect = pygame.Rect(popup_x, popup_y, popup_width, popup_height)
+
+        preview_offset_x, preview_offset_y = 545, 55
+        self._map_popup_preview_rect = pygame.Rect(
+            self._map_popup_rect.x + preview_offset_x,
+            self._map_popup_rect.y + preview_offset_y,
+            461,
+            459,
+        )
+
+        select_offset_x, select_offset_y = 681, 597
+        self._map_popup_select_rect = pygame.Rect(
+            self._map_popup_rect.x + select_offset_x,
+            self._map_popup_rect.y + select_offset_y,
+            219,
+            53,
+        )
         self._map_popup_option_rects = self._build_map_option_rects()
         self._map_popup_open = False
         self._map_popup_hover_index: int | None = None
@@ -255,30 +273,29 @@ class GameMain:
         return out
 
     def _build_map_option_rects(self) -> list[pygame.Rect]:
-        base_coords = [
-            (197, 192),
-            (197, 277),
-            (197, 362),
-            (197, 447),
-            (197, 532),
-            (413, 192),
-            (413, 277),
-            (413, 362),
-            (413, 447),
-            (413, 532),
+        base_offsets = [
+            (89, 96),
+            (89, 181),
+            (89, 266),
+            (89, 351),
+            (89, 436),
+            (305, 96),
+            (305, 181),
+            (305, 266),
+            (305, 351),
+            (305, 436),
         ]
         total_options = len(self.map_list) + 1  # include Random option
         rects: list[pygame.Rect] = []
         self._map_option_positions: list[tuple[int, int]] = []
         for idx in range(total_options):
-            if idx == total_options - 1:
-                coord_index = len(base_coords) - 1
-            else:
-                coord_index = min(idx, len(base_coords) - 2)
-            x, y = base_coords[coord_index]
+            coord_index = min(idx, len(base_offsets) - 2)
+            offset_x, offset_y = base_offsets[coord_index]
+            x = self._map_popup_rect.x + offset_x
+            y = self._map_popup_rect.y + offset_y
             rects.append(pygame.Rect(x, y, 128, 50))
-            col = 0 if x < 300 else 1
-            row = round((y - 192) / 85)
+            col = 0 if offset_x < 200 else 1
+            row = round((offset_y - base_offsets[0][1]) / 85)
             self._map_option_positions.append((row, col))
         return rects
 
@@ -2263,7 +2280,7 @@ class GameMain:
             button_color = (217, 217, 217) if not self._map_button_hovered else (200, 200, 200)
             pygame.draw.rect(self.screen, button_color, self._map_select_button_rect)
             pygame.draw.rect(self.screen, (0, 0, 0), self._map_select_button_rect, 1)
-            map_button_text = self.font_sm.render("Map Selection", False, (0, 0, 0))
+            map_button_text = self.font_s.render("Map Selection", False, (0, 0, 0))
             self.screen.blit(map_button_text, map_button_text.get_rect(center=self._map_select_button_rect.center))
 
             if self._map_popup_open:
@@ -2280,10 +2297,6 @@ class GameMain:
 
                 pygame.draw.rect(self.screen, (255, 255, 255), self._map_popup_rect)
                 pygame.draw.rect(self.screen, (0, 0, 0), self._map_popup_rect, 3)
-
-                title_surface = self.font_m.render("Map Selection", False, (0, 0, 0))
-                title_rect = title_surface.get_rect(midtop=(self._map_popup_rect.centerx, self._map_popup_rect.y + 25))
-                self.screen.blit(title_surface, title_rect)
 
                 preview_surface_large = self._map_preview_large[self._map_popup_temp_selection]
                 self.screen.blit(preview_surface_large, self._map_popup_preview_rect)
