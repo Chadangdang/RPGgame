@@ -113,6 +113,21 @@ class GameMain:
         self.font_end_button = pygame.font.Font('resource/font.ttf', 24)
         self.font_menu_label = pygame.font.Font('resource/font.ttf', 26)
 
+        # --- Map selection UI geometry/state ---
+        self._map_select_button_rect = pygame.Rect(1002, 943, 247, 52)
+        self._map_preview_thumb_rect = pygame.Rect(809, 893, 151, 150)
+        self._map_popup_rect = pygame.Rect(108, 96, 1063, 907)
+        self._map_popup_preview_rect = pygame.Rect(653, 151, 461, 459)
+        self._map_popup_select_rect = pygame.Rect(789, 693, 219, 53)
+        self._map_popup_option_rects = self._build_map_option_rects()
+        self._map_popup_open = False
+        self._map_popup_hover_index: int | None = None
+        self._map_popup_temp_selection = self._clamp_map_index(self.map_number)
+        self._map_button_hovered = False
+        self._map_popup_select_hovered = False
+        self._map_option_labels = [self._map_label_from_key(name) for name in self.map_list] + ['Random']
+        self._map_preview_large, self._map_preview_small = self._load_map_previews()
+
         # Match limit slider geometry/state
         self.match_limit = AUTO_MATCH_LIMIT  # default slider value (1..10)
         self._match_limit_min = 1
@@ -238,6 +253,163 @@ class GameMain:
             else:
                 out.append(e)
         return out
+
+    def _build_map_option_rects(self) -> list[pygame.Rect]:
+        base_coords = [
+            (197, 192),
+            (197, 277),
+            (197, 362),
+            (197, 447),
+            (197, 532),
+            (413, 192),
+            (413, 277),
+            (413, 362),
+            (413, 447),
+            (413, 532),
+        ]
+        total_options = len(self.map_list) + 1  # include Random option
+        rects: list[pygame.Rect] = []
+        self._map_option_positions: list[tuple[int, int]] = []
+        for idx in range(total_options):
+            if idx == total_options - 1:
+                coord_index = len(base_coords) - 1
+            else:
+                coord_index = min(idx, len(base_coords) - 2)
+            x, y = base_coords[coord_index]
+            rects.append(pygame.Rect(x, y, 128, 50))
+            col = 0 if x < 300 else 1
+            row = round((y - 192) / 85)
+            self._map_option_positions.append((row, col))
+        return rects
+
+    def _map_label_from_key(self, key: str) -> str:
+        if not key:
+            return key
+        if ' ' in key:
+            return key.split(' ', 1)[1]
+        return key
+
+    def _load_map_previews(self) -> tuple[list[pygame.Surface], list[pygame.Surface]]:
+        large_size = self._map_popup_preview_rect.size
+        thumb_size = self._map_preview_thumb_rect.size
+        large_surfaces: list[pygame.Surface] = []
+        small_surfaces: list[pygame.Surface] = []
+        for idx in range(len(self.map_list)):
+            path = os.path.join('resource', 'map', f'map{idx}.jpg')
+            try:
+                image = pygame.image.load(path).convert()
+            except (pygame.error, FileNotFoundError):
+                image = pygame.Surface(large_size)
+                image.fill((210, 210, 210))
+            large_surface = pygame.transform.smoothscale(image, large_size)
+            small_surface = pygame.transform.smoothscale(image, thumb_size)
+            large_surfaces.append(large_surface)
+            small_surfaces.append(small_surface)
+
+        random_large = self._create_random_preview(large_size, self.font_end_title)
+        random_small = self._create_random_preview(thumb_size, self.font_m)
+        large_surfaces.append(random_large)
+        small_surfaces.append(random_small)
+        return large_surfaces, small_surfaces
+
+    def _create_random_preview(self, size: tuple[int, int], font: pygame.font.Font) -> pygame.Surface:
+        surface = pygame.Surface(size)
+        surface.fill((220, 220, 220))
+        border_rect = surface.get_rect()
+        pygame.draw.rect(surface, (180, 180, 180), border_rect, 4)
+        text = font.render('?', False, (80, 80, 80))
+        text_rect = text.get_rect(center=border_rect.center)
+        surface.blit(text, text_rect)
+        return surface
+
+    def _clamp_map_index(self, index: int) -> int:
+        max_index = len(self.map_list)
+        if index < 0:
+            return 0
+        if index > max_index:
+            return max_index
+        return index
+
+    def _handle_map_popup_event(self, event: pygame.event.Event) -> bool:
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                self._map_popup_open = False
+                self._map_popup_select_hovered = False
+                self._map_popup_temp_selection = self._clamp_map_index(self.map_number)
+                self._map_popup_hover_index = None
+                return True
+            if event.key in (pygame.K_RETURN, pygame.K_SPACE):
+                self.map_number = self._map_popup_temp_selection
+                self._map_popup_open = False
+                self._map_popup_select_hovered = False
+                self._map_popup_hover_index = None
+                return True
+            if event.key in (pygame.K_UP, pygame.K_DOWN, pygame.K_LEFT, pygame.K_RIGHT):
+                self._move_map_popup_selection(event.key)
+                return True
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self._map_popup_select_rect.collidepoint(event.pos):
+                self.map_number = self._map_popup_temp_selection
+                self._map_popup_open = False
+                self._map_popup_select_hovered = False
+                self._map_popup_hover_index = None
+                return True
+            for idx, rect in enumerate(self._map_popup_option_rects):
+                if rect.collidepoint(event.pos):
+                    self._map_popup_temp_selection = idx
+                    return True
+            if not self._map_popup_rect.collidepoint(event.pos):
+                self._map_popup_open = False
+                self._map_popup_select_hovered = False
+                self._map_popup_temp_selection = self._clamp_map_index(self.map_number)
+                self._map_popup_hover_index = None
+                return True
+        elif event.type == pygame.MOUSEMOTION:
+            if self._map_popup_rect.collidepoint(event.pos):
+                for idx, rect in enumerate(self._map_popup_option_rects):
+                    if rect.collidepoint(event.pos):
+                        self._map_popup_hover_index = idx
+                        break
+                else:
+                    self._map_popup_hover_index = None
+            else:
+                self._map_popup_hover_index = None
+            return True
+        return False
+
+    def _move_map_popup_selection(self, key: int) -> None:
+        if not self._map_popup_option_rects:
+            return
+        current_idx = self._clamp_map_index(self._map_popup_temp_selection)
+        current_row, current_col = self._map_option_positions[current_idx]
+
+        def best_candidate(predicate) -> int | None:
+            best: tuple[int, int] | None = None
+            best_idx: int | None = None
+            for idx, (row, col) in enumerate(self._map_option_positions):
+                if idx == current_idx:
+                    continue
+                if predicate(row, col):
+                    diff_row = abs(row - current_row)
+                    diff_col = abs(col - current_col)
+                    weight = diff_row * 10 + diff_col
+                    if best is None or (weight, row, col) < best:
+                        best = (weight, row, col)
+                        best_idx = idx
+            return best_idx
+
+        next_idx: int | None = None
+        if key == pygame.K_UP:
+            next_idx = best_candidate(lambda r, c: c == current_col and r < current_row)
+        elif key == pygame.K_DOWN:
+            next_idx = best_candidate(lambda r, c: c == current_col and r > current_row)
+        elif key == pygame.K_LEFT:
+            next_idx = best_candidate(lambda r, c: c < current_col)
+        elif key == pygame.K_RIGHT:
+            next_idx = best_candidate(lambda r, c: c > current_col)
+
+        if next_idx is not None:
+            self._map_popup_temp_selection = next_idx
 
     # --------- logging helper ----------
     def log(self, text: str, color=(0, 0, 0), time_elapsed=0.0) -> None:
@@ -1256,10 +1428,18 @@ class GameMain:
                             self._apply_scale(self._scale_for_laptop())
                         
         elif self.game_screen == 0:       # AI select screen
+            if not self._map_popup_open:
+                self._map_popup_temp_selection = self._clamp_map_index(self.map_number)
+                self._map_popup_hover_index = None
             for event in events:
                 if event.type == pygame.QUIT:
                     pygame.quit()
                     sys.exit()
+                if self._map_popup_open:
+                    if self._handle_map_popup_event(event):
+                        continue
+                    if event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION, pygame.KEYDOWN):
+                        continue
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_RETURN:
                         if self.p1_sel_cursor.show and self.p2_sel_cursor.show:
@@ -1286,6 +1466,13 @@ class GameMain:
                         if self.map_number > len(self.map_list):
                             self.map_number = 0
                 if event.type == pygame.MOUSEBUTTONDOWN:
+                    if event.button == 1 and (self._map_select_button_rect.collidepoint(event.pos) or self._map_preview_thumb_rect.collidepoint(event.pos)):
+                        self._map_popup_open = True
+                        self._map_popup_temp_selection = self._clamp_map_index(self.map_number)
+                        self._map_popup_hover_index = None
+                        self._map_popup_select_hovered = False
+                        self._match_limit_slider_dragging = False
+                        continue
                     if event.button == 1 and self._match_limit_slider_rect.collidepoint(event.pos):
                         self._match_limit_slider_dragging = True
                         self.match_limit = self._match_limit_value_from_pos(event.pos[0])
@@ -1295,7 +1482,7 @@ class GameMain:
                 if event.type == pygame.MOUSEMOTION:
                     if self._match_limit_slider_dragging:
                         self.match_limit = self._match_limit_value_from_pos(event.pos[0])
-                        
+
                 # Mouse: make all 10 AI type buttons clickable
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     mx, my = event.pos
@@ -2065,14 +2252,71 @@ class GameMain:
             pygame.draw.rect(self.screen, (255, 255, 255), knob_rect)
             pygame.draw.rect(self.screen, (0, 0, 0), knob_rect, 1)
 
-            if self.map_number == len(self.map_list):
-                map_text = self.font_s.render(f"Map : Random", False, (0, 0, 0))
-                text_rect = map_text.get_rect(bottomright=(WIDTH - 40, 700))
-                self.screen.blit(map_text, text_rect)
-            else:
-                map_text = self.font_s.render(f"Map : {str(self.map_list[self.map_number])}", False, (0, 0, 0))
-                text_rect = map_text.get_rect(bottomright=(WIDTH - 40, 700))
-                self.screen.blit(map_text, text_rect)
+            mouse_pos = pygame.mouse.get_pos()
+            self._map_button_hovered = self._map_select_button_rect.collidepoint(mouse_pos)
+
+            preview_index = self._clamp_map_index(self.map_number)
+            preview_surface = self._map_preview_small[preview_index]
+            self.screen.blit(preview_surface, self._map_preview_thumb_rect)
+            pygame.draw.rect(self.screen, (0, 0, 0), self._map_preview_thumb_rect, 1)
+
+            button_color = (217, 217, 217) if not self._map_button_hovered else (200, 200, 200)
+            pygame.draw.rect(self.screen, button_color, self._map_select_button_rect)
+            pygame.draw.rect(self.screen, (0, 0, 0), self._map_select_button_rect, 1)
+            map_button_text = self.font_sm.render("Map Selection", False, (0, 0, 0))
+            self.screen.blit(map_button_text, map_button_text.get_rect(center=self._map_select_button_rect.center))
+
+            if self._map_popup_open:
+                self._map_popup_select_hovered = self._map_popup_select_rect.collidepoint(mouse_pos)
+                self._map_popup_hover_index = None
+                for idx, rect in enumerate(self._map_popup_option_rects):
+                    if rect.collidepoint(mouse_pos):
+                        self._map_popup_hover_index = idx
+                        break
+
+                overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+                overlay.fill((0, 0, 0, 100))
+                self.screen.blit(overlay, (0, 0))
+
+                pygame.draw.rect(self.screen, (255, 255, 255), self._map_popup_rect)
+                pygame.draw.rect(self.screen, (0, 0, 0), self._map_popup_rect, 3)
+
+                title_surface = self.font_m.render("Map Selection", False, (0, 0, 0))
+                title_rect = title_surface.get_rect(midtop=(self._map_popup_rect.centerx, self._map_popup_rect.y + 25))
+                self.screen.blit(title_surface, title_rect)
+
+                preview_surface_large = self._map_preview_large[self._map_popup_temp_selection]
+                self.screen.blit(preview_surface_large, self._map_popup_preview_rect)
+                pygame.draw.rect(self.screen, (0, 0, 0), self._map_popup_preview_rect, 2)
+
+                preview_label = self._map_option_labels[self._map_popup_temp_selection]
+                if preview_label.lower() != 'random':
+                    preview_label = f"Map {preview_label}"
+                preview_text = self.font_sm.render(preview_label, False, (0, 0, 0))
+                preview_text_rect = preview_text.get_rect(midtop=(self._map_popup_preview_rect.centerx, self._map_popup_preview_rect.bottom + 12))
+                self.screen.blit(preview_text, preview_text_rect)
+
+                for idx, rect in enumerate(self._map_popup_option_rects):
+                    is_selected = idx == self._map_popup_temp_selection
+                    is_hovered = idx == self._map_popup_hover_index and not is_selected
+                    fill_color = (226, 226, 226)
+                    if is_hovered:
+                        fill_color = (210, 210, 210)
+                    pygame.draw.rect(self.screen, fill_color, rect)
+                    border_color = (19, 189, 0) if is_selected else (0, 0, 0)
+                    border_width = 4 if is_selected else 2
+                    pygame.draw.rect(self.screen, border_color, rect, border_width)
+
+                    label = self._map_option_labels[idx]
+                    text_surface = self.font_menu_label.render(label, False, (0, 0, 0))
+                    text_rect = text_surface.get_rect(center=rect.center)
+                    self.screen.blit(text_surface, text_rect)
+
+                select_color = (199, 255, 178) if not self._map_popup_select_hovered else (182, 235, 160)
+                pygame.draw.rect(self.screen, select_color, self._map_popup_select_rect)
+                pygame.draw.rect(self.screen, (0, 0, 0), self._map_popup_select_rect, 2)
+                select_text = self.font_sm.render("SELECT", False, (0, 0, 0))
+                self.screen.blit(select_text, select_text.get_rect(center=self._map_popup_select_rect.center))
 
 
         elif self.game_screen == 1:
