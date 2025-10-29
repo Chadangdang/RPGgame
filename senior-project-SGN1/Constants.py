@@ -35,6 +35,7 @@ GRID_ROWS = 8
 GRID_COLS = 8
 
 # Auto
+AUTO_GAME_LIMIT = 1
 AUTO_MATCH_LIMIT = 10
 
 # Keyboard

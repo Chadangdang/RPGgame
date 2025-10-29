@@ -146,6 +146,16 @@ class GameMain:
         self._map_option_labels = [self._map_label_from_key(name) for name in self.map_list] + ['Random']
         self._map_preview_large, self._map_preview_small = self._load_map_previews()
 
+        # Game limit slider geometry/state
+        self.game_limit = AUTO_GAME_LIMIT  # default number of games in a series (1..10)
+        self._game_limit_min = 1
+        self._game_limit_max = 10
+        self._game_limit_box_rect = pygame.Rect(224, 910, 58, 25)
+        self._game_limit_slider_rect = pygame.Rect(292, 910, 220, 25)
+        self._game_limit_knob_width = 16
+        self._game_limit_knob_height = 16
+        self._game_limit_slider_dragging = False
+
         # Match limit slider geometry/state
         self.match_limit = AUTO_MATCH_LIMIT  # default slider value (1..10)
         self._match_limit_min = 1
@@ -1258,6 +1268,7 @@ class GameMain:
         pygame.draw.rect(self.screen, YELLOW, selected_rect, 4)
     def screen1init(self):
 
+        self.game_limit = max(self._game_limit_min, min(self._game_limit_max, self.game_limit))
         self.match_limit = max(self._match_limit_min, min(self._match_limit_max, self.match_limit))
 
         AI_types = ('Player Input', 'Perfect Play AI', 'Random AI', 'Personality Cores AI', 'Disable AI') # not 'Independent Action AI' anymore
@@ -1288,8 +1299,23 @@ class GameMain:
         self.game_screen = 1
 
     def startMatch(self) -> None:
+        total_completed = self.total_p1_win + self.total_p2_win
+        if total_completed >= self.game_limit:
+            if self.isAuto:
+                print(f"Game limit of {self.game_limit} reached.")
+                print(f"Player 1: {self.total_p1_win} wins")
+                print(f"Player 2: {self.total_p2_win} wins")
+            if self.total_p1_win > self.total_p2_win:
+                self.game_state = 'win'
+            elif self.total_p2_win > self.total_p1_win:
+                self.game_state = 'lose'
+            else:
+                print("-Tie breaking Game-")
+            self._log_series_summary(total_matches_played=total_completed)
+            return
+
         self.currentMatch += 1
-        self.cumulative_time = 0.0  
+        self.cumulative_time = 0.0
 
         self._ai_log_len = {}
         self._ai_pending_lines.clear()
@@ -1488,15 +1514,22 @@ class GameMain:
                         self._map_popup_temp_selection = self._clamp_map_index(self.map_number)
                         self._map_popup_hover_index = None
                         self._map_popup_select_hovered = False
+                        self._game_limit_slider_dragging = False
                         self._match_limit_slider_dragging = False
                         continue
-                    if event.button == 1 and self._match_limit_slider_rect.collidepoint(event.pos):
+                    if event.button == 1 and self._game_limit_slider_rect.collidepoint(event.pos):
+                        self._game_limit_slider_dragging = True
+                        self.game_limit = self._game_limit_value_from_pos(event.pos[0])
+                    elif event.button == 1 and self._match_limit_slider_rect.collidepoint(event.pos):
                         self._match_limit_slider_dragging = True
                         self.match_limit = self._match_limit_value_from_pos(event.pos[0])
                 if event.type == pygame.MOUSEBUTTONUP:
                     if event.button == 1:
+                        self._game_limit_slider_dragging = False
                         self._match_limit_slider_dragging = False
                 if event.type == pygame.MOUSEMOTION:
+                    if self._game_limit_slider_dragging:
+                        self.game_limit = self._game_limit_value_from_pos(event.pos[0])
                     if self._match_limit_slider_dragging:
                         self.match_limit = self._match_limit_value_from_pos(event.pos[0])
 
@@ -2087,6 +2120,23 @@ class GameMain:
 
             # Cursor.state = self.field.update(dt, events, Cursor.state)
 
+    def _game_limit_position_from_value(self, value: int) -> int:
+        value = max(self._game_limit_min, min(self._game_limit_max, value))
+        span = self._game_limit_slider_rect.width - self._game_limit_knob_width
+        if span <= 0 or self._game_limit_max == self._game_limit_min:
+            return 0
+        ratio = (value - self._game_limit_min) / (self._game_limit_max - self._game_limit_min)
+        return int(round(ratio * span))
+
+    def _game_limit_value_from_pos(self, pos_x: float) -> int:
+        span = self._game_limit_slider_rect.width - self._game_limit_knob_width
+        if span <= 0 or self._game_limit_max == self._game_limit_min:
+            return self._game_limit_min
+        ratio = (pos_x - self._game_limit_slider_rect.x - self._game_limit_knob_width / 2) / span
+        ratio = max(0.0, min(1.0, ratio))
+        value = round(ratio * (self._game_limit_max - self._game_limit_min)) + self._game_limit_min
+        return int(max(self._game_limit_min, min(self._game_limit_max, value)))
+
     def _match_limit_position_from_value(self, value: int) -> int:
         value = max(self._match_limit_min, min(self._match_limit_max, value))
         span = self._match_limit_slider_rect.width - self._match_limit_knob_width
@@ -2239,6 +2289,35 @@ class GameMain:
             auto_value_rect.topleft = (auto_label_rect.right + 8, 880)
 
             self.screen.blit(auto_value_surface, auto_value_rect)
+
+            game_label = self.font_menu_label.render("Game limit:", False, (0, 0, 0))
+            self.screen.blit(game_label, (64, 910))
+
+            pygame.draw.rect(self.screen, (245, 245, 245), self._game_limit_box_rect)
+            pygame.draw.rect(self.screen, (0, 0, 0), self._game_limit_box_rect, 1)
+
+            game_value_surface = self.font_s.render(str(self.game_limit), False, (0, 0, 0))
+            game_value_rect = game_value_surface.get_rect(center=self._game_limit_box_rect.center)
+            self.screen.blit(game_value_surface, game_value_rect)
+
+            game_track_rect = pygame.Rect(
+                self._game_limit_slider_rect.x + 2,
+                self._game_limit_slider_rect.y + (self._game_limit_slider_rect.height - 4) // 2,
+                self._game_limit_slider_rect.width - 4,
+                4,
+            )
+            pygame.draw.rect(self.screen, (245, 245, 245), game_track_rect)
+
+            game_knob_left = self._game_limit_slider_rect.x + self._game_limit_position_from_value(self.game_limit)
+            game_knob_top = self._game_limit_slider_rect.y + (self._game_limit_slider_rect.height - self._game_limit_knob_height) // 2
+            game_knob_rect = pygame.Rect(
+                game_knob_left,
+                game_knob_top,
+                self._game_limit_knob_width,
+                self._game_limit_knob_height,
+            )
+            pygame.draw.rect(self.screen, (255, 255, 255), game_knob_rect)
+            pygame.draw.rect(self.screen, (0, 0, 0), game_knob_rect, 1)
 
             match_label = self.font_menu_label.render("Match limit:", False, (0, 0, 0))
             self.screen.blit(match_label, (64, 945))
