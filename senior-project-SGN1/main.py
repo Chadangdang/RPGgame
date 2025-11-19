@@ -251,7 +251,10 @@ class GameMain:
         
         self.cumulative_time = 0.0
         self.match_start_time = 0.0
-        self.last_match_duration = 0.0       
+        self.last_match_duration = 0.0     
+        
+        self.obj_control_team1 = 0
+        self.obj_control_team2 = 0  
 
     # ---- scaling helpers ----
     def _install_mouse_patch(self) -> None:
@@ -1361,6 +1364,9 @@ class GameMain:
         self._pending_ko_sources_by_name = {}
         self.p1_round_wins = 0
         self.p2_round_wins = 0
+        
+        self.obj_control_team1 = 0
+        self.obj_control_team2 = 0
 
         ai1_name = self._get_ai_label(self.team1_ID)
         ai2_name = self._get_ai_label(self.team2_ID)
@@ -2227,6 +2233,26 @@ class GameMain:
 
             prev_state = {cid: data.copy() for cid, data in self._char_snapshots.items()}
             current_state = self._capture_character_state()
+            
+            team1_on_obj = 0
+            team2_on_obj = 0
+
+            for char_id, data in current_state.items():
+                r, c = data["grid"]
+                terrain = self.field.boxes[r][c].terrain
+
+                if terrain == 3:  # Objective tile
+                    if data["team"] == 1:
+                        team1_on_obj += 1
+                    else:
+                        team2_on_obj += 1
+
+            # Count control ticks only if one team is actually winning the tile
+            if team1_on_obj > team2_on_obj:
+                self.obj_control_team1 += 1
+            elif team2_on_obj > team1_on_obj:
+                self.obj_control_team2 += 1
+                
             if prev_state or current_state:
                 self._process_character_movements(prev_state, current_state)
                 self._process_ai_logs(prev_state, current_state)
@@ -3085,7 +3111,7 @@ class GameMain:
             winner = "Team 1" if self.total_p1_win > self.total_p2_win else "Team 2"
             summary_ws.cell(row, 1, f"Winner: {winner}").font = Font(bold=True)
             row += 1
-            # FIX: Total Matches Played = completed matches
+            # Total Matches Played
             total_matches_played = max(0, self.currentMatch - 1)
             summary_ws.cell(row, 1, f"Total Matches Played: {total_matches_played}").font = Font(bold=True)
             row += 1
@@ -3121,6 +3147,30 @@ class GameMain:
                 for detail in kill_details:
                     summary_ws.cell(row, 1, detail)
                     row += 1
+                    
+            # ------------------------------------------------
+            # ⭐ ADD OBJECTIVE CONTROL BELOW KILL DETAILS ⭐
+            # ------------------------------------------------
+            row += 1  # One empty line for spacing
+
+            summary_ws.cell(row, 1, "Objective Control:").font = Font(bold=True)
+            row += 1
+
+            team1_obj = self.obj_control_team1
+            team2_obj = self.obj_control_team2
+            total_obj = team1_obj + team2_obj
+
+            team1_obj_pct = (team1_obj / total_obj * 100) if total_obj > 0 else 0
+            team2_obj_pct = (team2_obj / total_obj * 100) if total_obj > 0 else 0
+
+            summary_ws.cell(row, 1, f"- Team 1 control ticks: {team1_obj}")
+            row += 1
+            summary_ws.cell(row, 1, f"- Team 2 control ticks: {team2_obj}")
+            row += 1
+            summary_ws.cell(row, 1, f"- Team 1 Control %: {team1_obj_pct:.2f}%")
+            row += 1
+            summary_ws.cell(row, 1, f"- Team 2 Control %: {team2_obj_pct:.2f}%")
+            row += 1
 
             # Save
             export_dir = "exports"
