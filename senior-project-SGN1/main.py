@@ -103,10 +103,21 @@ class GameMain:
         self._show_model_modal = False
         self._model_modal_for = 1      # 1 = selecting for P1, 2 = P2
         self._model_hover = -1
-
-    # Buttons for model selection (under AI choices)
+        # Model selector layout/state (AI selection page)
+        self._model_box_w = 298
+        self._model_box_h = 66
+        self._model_box_gap = 89
+        self._model_list_top = 259
+        self._model_left_x = 154
+        self._model_right_x = 756
+        self._model_visible_rows = 5
+        self._model_scroll_offset = 0
+        self._model_scroll_dragging = [False, False]  # [left, right]
+        self._model_scroll_drag_offset = [0, 0]
+        # Buttons for model selection (under AI choices)
         self._model_btn_p1 = pygame.Rect(360, 590, 260, 40)
         self._model_btn_p2 = pygame.Rect(630, 590, 260, 40)
+        self._start_button_rect = pygame.Rect(WIDTH // 2 - 130, 700, 260, 64)
 
 
         self.game_state = 'selecting start area'
@@ -1524,6 +1535,22 @@ class GameMain:
                 self._map_popup_temp_selection = self._clamp_map_index(self.map_number)
                 self._map_popup_hover_index = None
 
+            # Keep cursor bounds in sync with model count
+            total_rows = len(AI_SELECTION_LABELS)
+            self.menu_cursor.bound = (total_rows, 2)
+            self.p1_sel_cursor.bound = (total_rows, 1)
+            self.p2_sel_cursor.bound = (total_rows, 1)
+
+            # Geometry for hit-tests
+            left_origin = self._model_column_origin(True)
+            right_origin = self._model_column_origin(False)
+            list_h = self._model_track_height()
+            list_rect_left = pygame.Rect(left_origin[0], left_origin[1], self._model_box_w, list_h)
+            list_rect_right = pygame.Rect(right_origin[0], right_origin[1], self._model_box_w, list_h)
+            left_thumb = self._model_thumb_rect(True)
+            right_thumb = self._model_thumb_rect(False)
+
+
             for event in events:
                 # --- Window close ---
                 if event.type == pygame.QUIT:
@@ -1547,6 +1574,12 @@ class GameMain:
                     # Arrow keys move the hover menu cursor
                     elif event.key in (pygame.K_UP, pygame.K_DOWN, pygame.K_LEFT, pygame.K_RIGHT):
                         self.menu_cursor.moveBy(event.key)
+                        # auto-scroll keyboard focus into view
+                        if self.menu_cursor.grid[0] < self._model_scroll_offset:
+                            self._model_scroll_offset = self.menu_cursor.grid[0]
+                        elif self.menu_cursor.grid[0] >= self._model_scroll_offset + self._model_visible_rows:
+                            self._model_scroll_offset = self.menu_cursor.grid[0] - self._model_visible_rows + 1
+                        self._model_scroll_offset = max(0, min(self._model_scroll_offset, self._model_max_offset()))
 
                     # Z to confirm selection into the column you're on
                     elif event.key == pygame.K_z:
@@ -1568,33 +1601,79 @@ class GameMain:
                         self.map_number += 1
                         if self.map_number > len(self.map_list):
                             self.map_number = 0
+
                 if event.type == pygame.MOUSEBUTTONDOWN:
-                    if event.button == 1 and (self._map_select_button_rect.collidepoint(event.pos) or self._map_preview_thumb_rect.collidepoint(event.pos)):
-                        self._map_popup_open = True
-                        self._map_popup_temp_selection = self._clamp_map_index(self.map_number)
-                        self._map_popup_hover_index = None
-                        self._map_popup_select_hovered = False
-                        # cancel any active dragging
-                        self._match_limit_slider_dragging = False
-                        self._game_limit_slider_dragging = False
-                        continue
-                    # Game slider (higher on UI)
-                    if event.button == 1 and hasattr(self, "_game_limit_slider_rect") and self._game_limit_slider_rect.collidepoint(event.pos):
-                        self._game_limit_slider_dragging = True
-                        if hasattr(self, "_game_limit_value_from_pos"):
-                            self.game_limit = self._game_limit_value_from_pos(event.pos[0])
-                        continue
-                    # Match slider
-                    if event.button == 1 and hasattr(self, "_match_limit_slider_rect") and self._match_limit_slider_rect.collidepoint(event.pos):
-                        self._match_limit_slider_dragging = True
-                        if hasattr(self, "_match_limit_value_from_pos"):
-                            self.match_limit = self._match_limit_value_from_pos(event.pos[0])
+                    if event.button == 1:
+                        if self._start_button_rect.collidepoint(event.pos) and self.p1_sel_cursor.show and self.p2_sel_cursor.show:
+                            self.screen1init()
+                            continue
+                        if (self._map_select_button_rect.collidepoint(event.pos) or self._map_preview_thumb_rect.collidepoint(event.pos)):
+                            self._map_popup_open = True
+                            self._map_popup_temp_selection = self._clamp_map_index(self.map_number)
+                            self._map_popup_hover_index = None
+                            self._map_popup_select_hovered = False
+                            # cancel any active dragging
+                            self._match_limit_slider_dragging = False
+                            self._game_limit_slider_dragging = False
+                            continue
+                        # Game slider (higher on UI)
+                        if hasattr(self, "_game_limit_slider_rect") and self._game_limit_slider_rect.collidepoint(event.pos):
+                            self._game_limit_slider_dragging = True
+                            if hasattr(self, "_game_limit_value_from_pos"):
+                                self.game_limit = self._game_limit_value_from_pos(event.pos[0])
+                            continue
+                        # Match slider
+                        if hasattr(self, "_match_limit_slider_rect") and self._match_limit_slider_rect.collidepoint(event.pos):
+                            self._match_limit_slider_dragging = True
+                            if hasattr(self, "_match_limit_value_from_pos"):
+                                self.match_limit = self._match_limit_value_from_pos(event.pos[0])
+                            continue
+
+                        # Scrollbar thumbs
+                        if left_thumb.collidepoint(event.pos):
+                            self._model_scroll_dragging[0] = True
+                            self._model_scroll_drag_offset[0] = event.pos[1] - left_thumb.centery
+                        elif right_thumb.collidepoint(event.pos):
+                            self._model_scroll_dragging[1] = True
+                            self._model_scroll_drag_offset[1] = event.pos[1] - right_thumb.centery
+                        # Scrollbar track clicks jump to position
+                        elif self._model_track_rect(True).collidepoint(event.pos):
+                            self._model_scroll_offset = self._model_offset_from_thumb(event.pos[1], True)
+                        elif self._model_track_rect(False).collidepoint(event.pos):
+                            self._model_scroll_offset = self._model_offset_from_thumb(event.pos[1], False)
+                        self._model_scroll_offset = max(0, min(self._model_scroll_offset, self._model_max_offset()))
+
+                        # Clickable AI choices (both columns)
+                        mx, my = event.pos
+                        def _pick_from_list(is_left: bool) -> bool:
+                            if (is_left and not list_rect_left.collidepoint(mx, my)) or ((not is_left) and not list_rect_right.collidepoint(mx, my)):
+                                return False
+                            rel_y = my - self._model_list_top
+                            row_idx = int(rel_y // self._model_box_gap)
+                            real_idx = self._model_scroll_offset + row_idx
+                            if 0 <= row_idx < self._model_visible_rows and real_idx < len(AI_SELECTION_LABELS):
+                                if is_left:
+                                    self.p1_sel_cursor.moveTo((real_idx, 0))
+                                    self.p1_sel_cursor.show = True
+                                    self.menu_cursor.moveTo((real_idx, 0))
+                                else:
+                                    self.p2_sel_cursor.moveTo((real_idx, 1))
+                                    self.p2_sel_cursor.show = True
+                                    self.menu_cursor.moveTo((real_idx, 1))
+                                return True
+                            return False
+
+                        if not _pick_from_list(True):
+                            _pick_from_list(False)
+
                 if event.type == pygame.MOUSEBUTTONUP:
                     if event.button == 1:
+                        self._model_scroll_dragging = [False, False]
                         if hasattr(self, "_match_limit_slider_dragging") and self._match_limit_slider_dragging:
                             self._match_limit_slider_dragging = False
                         if hasattr(self, "_game_limit_slider_dragging") and self._game_limit_slider_dragging:
                             self._game_limit_slider_dragging = False
+
                 if event.type == pygame.MOUSEMOTION:
                     if hasattr(self, "_game_limit_slider_dragging") and self._game_limit_slider_dragging:
                         if hasattr(self, "_game_limit_value_from_pos"):
@@ -1602,83 +1681,17 @@ class GameMain:
                     elif hasattr(self, "_match_limit_slider_dragging") and self._match_limit_slider_dragging:
                         if hasattr(self, "_match_limit_value_from_pos"):
                             self.match_limit = self._match_limit_value_from_pos(event.pos[0])
-
-                # Mouse: make all 10 AI type buttons clickable
-                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    mx, my = event.pos
-                    # Left column (Player 1)
-                    left_x = WIDTH // 4 - 210
-                    for i in range(5):
-                        rect = pygame.Rect(left_x, 200 + i * 90, 420, 60)
-                        if rect.collidepoint(mx, my):
-                            # Select AI for Player 1
-                            self.p1_sel_cursor.moveTo((i, 0))
-                            self.p1_sel_cursor.show = True
-                            # Move the yellow menu cursor to the clicked button (left column)
-                            self.menu_cursor.moveTo((i, 0))
-                            break
-
-                # --- Mouse: left button down (slider OR AI buttons) ---
-                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    mx, my = event.pos
-
-                    # 1) Match-limit slider grab (guarded so it won't crash if rect/helper missing)
-                    if hasattr(self, "_match_limit_slider_rect") and self._match_limit_slider_rect.collidepoint(mx, my):
-                        self._match_limit_slider_dragging = True
-                        if hasattr(self, "_match_limit_value_from_pos"):
-                            self.match_limit = self._match_limit_value_from_pos(mx)
-
                     else:
-                        # 2) Clickable AI choices (both columns)
-                        y0, h_gap = 200, 90
-                        btn_w, btn_h = 420, 60
+                        for idx, dragging in enumerate(self._model_scroll_dragging):
+                            if dragging:
+                                center_y = event.pos[1] - self._model_scroll_drag_offset[idx]
+                                self._model_scroll_offset = self._model_offset_from_thumb(center_y, idx == 0)
 
-                        # Left column (Player 1)
-                        left_x = WIDTH // 4 - 210
-                        for i in range(5):
-                            rect = pygame.Rect(left_x, y0 + i * h_gap, btn_w, btn_h)
-                            if rect.collidepoint(mx, my):
-                                self.p1_sel_cursor.moveTo((i, 0))
-                                self.p1_sel_cursor.show = True
-                                self.menu_cursor.moveTo((i, 0))
-                                break
-                        else:
-                            # Right column (Player 2) — only checked if left column wasn't clicked
-                            right_x = WIDTH // 2 + WIDTH // 4 - 210
-                            for i in range(5):
-                                rect = pygame.Rect(right_x, y0 + i * h_gap, btn_w, btn_h)
-                                if rect.collidepoint(mx, my):
-                                    self.p2_sel_cursor.moveTo((i, 1))
-                                    self.p2_sel_cursor.show = True
-                                    self.menu_cursor.moveTo((i, 1))
-                                    break
-                
-                # --- Model Select Button ---
-                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    mx, my = event.pos                    
-                    # Model select buttons (below AI choices)
-                    p1_model_rect = pygame.Rect(WIDTH // 4 - 125, 650, 250, 50)
-                    p2_model_rect = pygame.Rect(WIDTH * 3 // 4 - 125, 650, 250, 50)
-                    # Player 1 Model Button
-                    if p1_model_rect.collidepoint(mx, my):
-                        self._model_modal_for = 1
-                        self._show_model_modal = True   # ✅ use your existing variable name
-                    # Player 2 Model Button
-                    elif p2_model_rect.collidepoint(mx, my):
-                        self._model_modal_for = 2
-                        self._show_model_modal = True   # ✅ use the same variable
-    
-
-                # --- Mouse: left button up (release slider) ---
-                elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-                    if hasattr(self, "_match_limit_slider_dragging") and self._match_limit_slider_dragging:
-                        self._match_limit_slider_dragging = False
-
-                # --- Mouse: move (while dragging slider) ---
-                elif event.type == pygame.MOUSEMOTION:
-                    if hasattr(self, "_match_limit_slider_dragging") and self._match_limit_slider_dragging:
-                        if hasattr(self, "_match_limit_value_from_pos"):
-                            self.match_limit = self._match_limit_value_from_pos(event.pos[0])
+                if event.type == pygame.MOUSEWHEEL:
+                    mx, my = pygame.mouse.get_pos()
+                    if list_rect_left.collidepoint(mx, my) or list_rect_right.collidepoint(mx, my):
+                        self._model_scroll_offset -= event.y
+                        self._model_scroll_offset = max(0, min(self._model_scroll_offset, self._model_max_offset()))
 
 
         elif self.game_screen == 1:
@@ -2295,6 +2308,45 @@ class GameMain:
         value = round(ratio * (self._game_limit_max - self._game_limit_min)) + self._game_limit_min
         return int(max(self._game_limit_min, min(self._game_limit_max, value)))
 
+    # --- Model selector helpers (AI select screen) ---
+    def _model_track_height(self) -> int:
+        return self._model_box_h + self._model_box_gap * (self._model_visible_rows - 1)
+
+    def _model_max_offset(self) -> int:
+        return max(0, len(AI_SELECTION_LABELS) - self._model_visible_rows)
+
+    def _model_column_origin(self, is_left: bool) -> tuple[int, int]:
+        return (self._model_left_x if is_left else self._model_right_x, self._model_list_top)
+
+    def _model_track_rect(self, is_left: bool) -> pygame.Rect:
+        x, y = self._model_column_origin(is_left)
+        track_x = x + self._model_box_w + 57
+        return pygame.Rect(track_x, y, 15, self._model_track_height())
+
+    def _model_thumb_rect(self, is_left: bool) -> pygame.Rect:
+        track = self._model_track_rect(is_left)
+        max_offset = self._model_max_offset()
+        if max_offset == 0:
+            thumb_h = track.height
+            thumb_y = track.y
+        else:
+            thumb_h = max(32, int(track.height * (self._model_visible_rows / len(AI_SELECTION_LABELS))))
+            thumb_span = track.height - thumb_h
+            ratio = (self._model_scroll_offset / max_offset) if max_offset else 0
+            thumb_y = track.y + int(ratio * thumb_span)
+        return pygame.Rect(track.x + 1, thumb_y, track.width - 4, thumb_h)
+
+    def _model_offset_from_thumb(self, thumb_center_y: float, is_left: bool) -> int:
+        max_offset = self._model_max_offset()
+        if max_offset == 0:
+            return 0
+        track = self._model_track_rect(is_left)
+        thumb_h = max(32, int(track.height * (self._model_visible_rows / len(AI_SELECTION_LABELS))))
+        thumb_span = max(1, track.height - thumb_h)
+        ratio = (thumb_center_y - track.y - thumb_h / 2) / thumb_span
+        ratio = max(0.0, min(1.0, ratio))
+        return int(round(ratio * max_offset))
+
     def render(self) -> None:
         if self.game_screen == -1:      # Start screen
             # Draw background
@@ -2367,77 +2419,74 @@ class GameMain:
         elif self.game_screen == 0:
             # AI selection screen — layout styled to match the provided screenshot
             self.screen.fill(SMOKE)
+            # Header banners anchored to provided coordinates
+            p1_banner = pygame.Rect(181, 122, 249, 71)
+            p2_banner = pygame.Rect(782, 127, 249, 71)
+            pygame.draw.rect(self.screen, (140, 215, 255), p1_banner)
+            pygame.draw.rect(self.screen, (255, 108, 108), p2_banner)
+            pygame.draw.rect(self.screen, BLACK, p1_banner, 2)
+            pygame.draw.rect(self.screen, BLACK, p2_banner, 2)
 
-            # Header banners
-            banner_w, banner_h = 260, 48
-            p1_banner = pygame.Rect(WIDTH // 4 - banner_w // 2, 24, banner_w, banner_h)
-            p2_banner = pygame.Rect(WIDTH * 3 // 4 - banner_w // 2, 24, banner_w, banner_h)
-            pygame.draw.rect(self.screen, (158, 219, 247), p1_banner)
-            pygame.draw.rect(self.screen, (255, 153, 153), p2_banner)
-            pygame.draw.rect(self.screen, (0, 0, 0), p1_banner, 2)
-            pygame.draw.rect(self.screen, (0, 0, 0), p2_banner, 2)
-
-            p1_title = self.font_s.render('PLAYER 1', False, (0, 0, 0))
-            p2_title = self.font_s.render('PLAYER 2', False, (0, 0, 0))
+            p1_title = self.font_m.render('PLAYER 1', False, (0, 0, 0))
+            p2_title = self.font_m.render('PLAYER 2', False, (0, 0, 0))
             self.screen.blit(p1_title, p1_title.get_rect(center=p1_banner.center))
             self.screen.blit(p2_title, p2_title.get_rect(center=p2_banner.center))
 
             # Build display labels: first is Player Input, then AI_1..AI_4 with the existing model names appended
             model_names = AI_SELECTION_LABELS
             labels = [model_names[0]] + [f'AI_{i}' for i in range(1, len(model_names))]
-            # We'll display the model name beside each AI_i in smaller text
 
-            left_center_x = WIDTH // 4
-            right_center_x = WIDTH * 3 // 4
-            start_y = 160
-            slot_h = 56
-            gap = 22
-            box_w = 360
+            def draw_column(is_left: bool) -> None:
+                origin_x, origin_y = self._model_column_origin(is_left)
+                mouse_pos = pygame.mouse.get_pos()
+                start = self._model_scroll_offset
+                end = min(len(labels), start + self._model_visible_rows)
+                highlight_color = (255, 255, 94)
 
-            for col_x in (left_center_x, right_center_x):
-                for i, main_label in enumerate(labels):
-                    y = start_y + i * (slot_h + gap)
-                    box_rect = pygame.Rect(col_x - box_w // 2, y, box_w, slot_h)
-                    pygame.draw.rect(self.screen, (255, 255, 255), box_rect)
-                    pygame.draw.rect(self.screen, (0, 0, 0), box_rect, 2)
+                for idx in range(start, end):
+                    local_idx = idx - start
+                    y = origin_y + local_idx * self._model_box_gap
+                    rect = pygame.Rect(origin_x, y, self._model_box_w, self._model_box_h)
+                    hovered = rect.collidepoint(mouse_pos)
+                    pygame.draw.rect(self.screen, (255, 255, 255) if not hovered else (245, 245, 245), rect)
+                    pygame.draw.rect(self.screen, BLACK, rect, 2)
 
-                    # Main label (AI_1 etc or Player Input)
-                    lbl = self.font_sm.render(main_label, False, (0, 0, 0))
-                    lbl_rect = lbl.get_rect(midleft=(box_rect.left + 18, box_rect.centery))
-                    self.screen.blit(lbl, lbl_rect)
+                    lbl_surface = self.font_sm.render(labels[idx], False, (0, 0, 0))
+                    self.screen.blit(lbl_surface, lbl_surface.get_rect(midleft=(rect.left + 18, rect.centery)))
+                    if idx > 0:
+                        mdl_surface = self.font_ss.render(model_names[idx], False, (0, 0, 0))
+                        self.screen.blit(mdl_surface, mdl_surface.get_rect(midright=(rect.right - 18, rect.centery)))
 
-                    # If not the Player Input row, draw the model name to the right
-                    if i > 0:
-                        model_name = model_names[i]
-                        mdl = self.font_ss.render(model_name, False, (0, 0, 0))
-                        mdl_rect = mdl.get_rect(midright=(box_rect.right - 18, box_rect.centery))
-                        self.screen.blit(mdl, mdl_rect)
+                    # Selection highlight (neon yellow inspired by map popup)
+                    sel_cursor = self.p1_sel_cursor if is_left else self.p2_sel_cursor
+                    if sel_cursor.show and sel_cursor.grid[0] == idx:
+                        pygame.draw.rect(self.screen, highlight_color, rect, 6)
 
-                    # Decorative dropdown arrow for the second row (like screenshot)
-                    if i == 2:
-                        arrow = self.font_sm.render('\u25BE', False, (0, 0, 0))
-                        arrow_rect = arrow.get_rect(midright=(box_rect.right - 40, box_rect.centery))
-                        self.screen.blit(arrow, arrow_rect)
+                    # Keyboard focus glow
+                    if self.menu_cursor.grid == (idx, 0 if is_left else 1):
+                        glow = pygame.Surface((rect.width + 8, rect.height + 8), pygame.SRCALPHA)
+                        glow.fill((255, 255, 94, 80))
+                        self.screen.blit(glow, (rect.x - 4, rect.y - 4))
+                        pygame.draw.rect(self.screen, highlight_color, rect, 3)
 
-            # Small scrollbars beside columns (cosmetic)
-            sb_x_off = box_w // 2 + 18
-            sb_h = (slot_h + gap) * len(labels) - gap
-            for cx in (left_center_x, right_center_x):
-                track_rect = pygame.Rect(cx + sb_x_off, start_y, 12, sb_h)
-                pygame.draw.rect(self.screen, SB_TRACK, track_rect)
-                thumb_rect = pygame.Rect(track_rect.x + 1, start_y + 8, 10, 44)
-                pygame.draw.rect(self.screen, SB_THUMB, thumb_rect)
+                # Scrollbar
+                track = self._model_track_rect(is_left)
+                thumb = self._model_thumb_rect(is_left)
+                pygame.draw.rect(self.screen, (254, 254, 254), track)
+                pygame.draw.rect(self.screen, BLACK, track, 2)
+                pygame.draw.rect(self.screen, (217, 217, 217), thumb)
+                pygame.draw.rect(self.screen, BLACK, thumb, 1)
 
-            # Center message
-            enter_text = self.font_l.render('Enter to start', False, (0, 0, 0))
-            self.screen.blit(enter_text, enter_text.get_rect(center=(WIDTH // 2, 680)))
+            draw_column(True)
+            draw_column(False)
 
-            # Draw selection cursors (positions are aligned to the left column coordinates)
-            p1_cursor_x = left_center_x - box_w // 2
-            p2_cursor_x = right_center_x - box_w // 2
-            self.p1_sel_cursor.render((p1_cursor_x, start_y + self.p1_sel_cursor.grid[0] * (slot_h + gap)))
-            self.p2_sel_cursor.render((p2_cursor_x, start_y + self.p2_sel_cursor.grid[0] * (slot_h + gap)))
-            self.menu_cursor.render((p1_cursor_x + self.menu_cursor.grid[1] * (box_w + 48), start_y + self.menu_cursor.grid[0] * (slot_h + gap)))
+            # Start button (replaces static "Enter to start" text)
+            start_hovered = self._start_button_rect.collidepoint(pygame.mouse.get_pos())
+            start_fill = (255, 255, 255) if not start_hovered else (240, 240, 240)
+            pygame.draw.rect(self.screen, start_fill, self._start_button_rect)
+            pygame.draw.rect(self.screen, BLACK, self._start_button_rect, 2)
+            start_text = self.font_l.render('START', False, (0, 0, 0))
+            self.screen.blit(start_text, start_text.get_rect(center=self._start_button_rect.center))
 
             # Bottom-left: Auto and match limit widgets (reuse existing controls)
             auto_label_surface = self.font_menu_label.render("Auto:", False, (0, 0, 0))
