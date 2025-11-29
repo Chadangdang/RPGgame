@@ -117,7 +117,7 @@ class GameMain:
         # Buttons for model selection (under AI choices)
         self._model_btn_p1 = pygame.Rect(360, 590, 260, 40)
         self._model_btn_p2 = pygame.Rect(630, 590, 260, 40)
-        self._start_button_rect = pygame.Rect(WIDTH // 2 - 130, 700, 260, 64)
+        self._start_button_rect = pygame.Rect(WIDTH // 2 - 130, 740, 260, 64)
 
 
         self.game_state = 'selecting start area'
@@ -176,9 +176,10 @@ class GameMain:
         self._match_limit_min = 1
         self._match_limit_max = 10
         self._match_limit_box_rect = pygame.Rect(224, 945, 58, 25)
-        self._match_limit_slider_rect = pygame.Rect(292, 945, 220, 25)
         self._match_limit_knob_width = 16
         self._match_limit_knob_height = 16
+        match_slider_y = self._match_limit_box_rect.centery - self._match_limit_knob_height // 2
+        self._match_limit_slider_rect = pygame.Rect(292, match_slider_y, 220, self._match_limit_knob_height)
         self._match_limit_slider_dragging = False
 
         # Game limit slider geometry/state (another slider shown above Match limit)
@@ -186,9 +187,10 @@ class GameMain:
         self._game_limit_min = 1
         self._game_limit_max = 10
         self._game_limit_box_rect = pygame.Rect(224, 915, 58, 25)
-        self._game_limit_slider_rect = pygame.Rect(292, 915, 220, 25)
         self._game_limit_knob_width = 16
         self._game_limit_knob_height = 16
+        game_slider_y = self._game_limit_box_rect.centery - self._game_limit_knob_height // 2
+        self._game_limit_slider_rect = pygame.Rect(292, game_slider_y, 220, self._game_limit_knob_height)
         self._game_limit_slider_dragging = False
 
         # --- Endgame popup geometry ---
@@ -2485,7 +2487,7 @@ class GameMain:
             start_fill = (255, 255, 255) if not start_hovered else (240, 240, 240)
             pygame.draw.rect(self.screen, start_fill, self._start_button_rect)
             pygame.draw.rect(self.screen, BLACK, self._start_button_rect, 2)
-            start_text = self.font_l.render('START', False, (0, 0, 0))
+            start_text = self.font_sm.render('START', False, (0, 0, 0))
             self.screen.blit(start_text, start_text.get_rect(center=self._start_button_rect.center))
 
             # Bottom-left: Auto and match limit widgets (reuse existing controls)
