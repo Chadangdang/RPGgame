@@ -911,7 +911,75 @@ class GameMain:
                 time_elapsed=self.cumulative_time 
             )
     # --------- geometry helper used by render & input ----------
-    def _calc_log_geometry(self):
+    def _log_content_width(self) -> int:
+        """Return the usable text width inside the log panel."""
+        log_rect = self._log_rect()
+        content_x = log_rect.x + 8
+
+        sb_margin = 6
+        sb_width = 10
+        track_x = log_rect.right - sb_margin - sb_width
+
+        # Small padding before the scrollbar
+        return max(0, track_x - content_x - 4)
+
+    def _wrap_text_to_width(self, text: str, max_width: int) -> list[str]:
+        """Wrap a string into a list of lines that fit within max_width."""
+        if max_width <= 0:
+            return [text]
+
+        if not text:
+            return [""]
+
+        words = text.split(" ")
+        lines: list[str] = []
+        current = ""
+
+        for word in words:
+            candidate = word if current == "" else f"{current} {word}"
+            if self.font_s.size(candidate)[0] <= max_width:
+                current = candidate
+                continue
+
+            if current:
+                lines.append(current)
+                current = ""
+
+            if self.font_s.size(word)[0] <= max_width:
+                current = word
+            else:
+                partial = ""
+                for ch in word:
+                    candidate_partial = partial + ch
+                    if self.font_s.size(candidate_partial)[0] <= max_width:
+                        partial = candidate_partial
+                    else:
+                        if partial:
+                            lines.append(partial)
+                        partial = ch
+                current = partial
+
+        if current:
+            lines.append(current)
+
+        return lines or [""]
+
+    def _wrap_game_log_lines(self, max_width: int) -> list[tuple[str, tuple[int, int, int], int | None]]:
+        """Expand game_log entries into individually wrapped display lines."""
+        wrapped: list[tuple[str, tuple[int, int, int], int | None]] = []
+        for log_tuple in self.game_log:
+            if len(log_tuple) == 3:
+                text, color, timestamp = log_tuple
+            else:
+                text, color = log_tuple
+                timestamp = None
+
+            for line in self._wrap_text_to_width(text, max_width):
+                wrapped.append((line, color, timestamp))
+
+        return wrapped
+
+    def _calc_log_geometry(self, total_log_lines: int | None = None):
         """Return a dict with log panel & scrollbar geometry and paging info."""
         header_h = self._log_header_h
         line_h = self._log_line_h
@@ -935,15 +1003,18 @@ class GameMain:
             log_rect.bottom - (header_rect.bottom + 6) - 6
         )
 
+        content_width = max(0, track_rect.x - content_x - 4)
+        total_lines = total_log_lines if total_log_lines is not None else len(self.game_log)
+
         # Compute scroll bounds
         # With chronological order, max_scroll is last possible start index
-        max_scroll = max(0, len(self.game_log) - max_lines)
+        max_scroll = max(0, total_lines - max_lines)
 
         # Thumb size proportional to visible fraction; enforce a minimum
         if max_scroll == 0:
             thumb_h = track_rect.height
         else:
-            visible_fraction = max_lines / max(len(self.game_log), 1)
+            visible_fraction = max_lines / max(total_lines, 1)
             thumb_h = max(24, int(track_rect.height * visible_fraction))
             thumb_h = min(thumb_h, track_rect.height)
 
@@ -964,7 +1035,8 @@ class GameMain:
             "max_scroll": max_scroll,
             "track_rect": track_rect,
             "thumb_rect": thumb_rect,
-            "line_h": line_h
+            "line_h": line_h,
+            "content_width": content_width
         }
 
     def _log_rect(self) -> pygame.Rect:
@@ -1698,7 +1770,9 @@ class GameMain:
 
         elif self.game_screen == 1:
             self.cumulative_time += dt
-            geom = self._calc_log_geometry()
+            log_content_width = self._log_content_width()
+            wrapped_log_lines = self._wrap_game_log_lines(log_content_width)
+            geom = self._calc_log_geometry(total_log_lines=len(wrapped_log_lines))
             self._sb_last_geometry = geom
 
             endgame_active = self._is_endgame_popup_active()
@@ -2788,7 +2862,9 @@ class GameMain:
             self.screen.blit(delay_text, text_rect)
 
             # ----------------- Game Log Panel (with SCROLLBAR) -----------------
-            geom = self._calc_log_geometry()
+            log_content_width = self._log_content_width()
+            wrapped_log_lines = self._wrap_game_log_lines(log_content_width)
+            geom = self._calc_log_geometry(total_log_lines=len(wrapped_log_lines))
 
             # panel fill + border
             pygame.draw.rect(self.screen, UI_PANEL, geom["log_rect"])
@@ -2814,14 +2890,10 @@ class GameMain:
                 self.log_scroll = 0
 
             start = self.log_scroll
-            end   = min(len(self.game_log), start + max_lines)
+            end   = min(len(wrapped_log_lines), start + max_lines)
 
-            for log_tuple in self.game_log[start:end]:
-                # Handle both old (text, color) and new (text, color, time) formats
-                if len(log_tuple) == 3:
-                    text, color, _ = log_tuple
-                else:
-                    text, color = log_tuple
+            for log_tuple in wrapped_log_lines[start:end]:
+                text, color, _ = log_tuple
                 img = self.font_s.render(text, False, color)
                 self.screen.blit(img, (x, y))
                 y += line_h
