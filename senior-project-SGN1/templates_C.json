@@ -1,0 +1,184 @@
+{
+    "templates": [
+        {
+            "template_name": "player1",
+            "display_name": "Fighter",
+            "img": "./resource/element/transparent-c1.png",
+            "curHP": 1,
+            "maxHP": 1,
+            "movement": 3,
+            "actions": [
+                {
+                    "action_name": "action1",
+                    "action_display_name": "Cleaver",
+                    "action_type": "Attack",
+                    "target": "Line",
+                    "range": 5,
+                    "damage": 5
+                },
+                {
+                    "action_name": "action2",
+                    "action_display_name": "Divine Strike",
+                    "action_type": "Attack",
+                    "target": "Cross",
+                    "range": 3,
+                    "damage": 6
+                },
+                {
+                    "action_name": "action3",
+                    "action_display_name": "Blade Blitz",
+                    "action_type": "Attack",
+                    "target": "Asterisk",
+                    "range": 2,
+                    "damage": 6
+                }
+            ]
+        },
+        {
+            "template_name": "player2",
+            "display_name": "Wizard",
+            "img": "./resource/element/transparent-c2.png",
+            "curHP": 1,
+            "maxHP": 1,
+            "movement": 3,
+            "actions": [
+                {
+                    "action_name": "action1",
+                    "action_display_name": "Fireball",
+                    "action_type": "Attack",
+                    "target": "Asterisk",
+                    "range": 3,
+                    "damage": 5
+                },
+                {
+                    "action_name": "action2",
+                    "action_display_name": "Thunderbolt",
+                    "action_type": "Attack",
+                    "target": "Box",
+                    "range": 2,
+                    "damage": 8
+                },
+                {
+                    "action_name": "action3",
+                    "action_display_name": "Iceshard",
+                    "action_type": "Attack",
+                    "target": "Line",
+                    "range": 4,
+                    "damage": 6
+                }
+            ]
+        },
+        {
+            "template_name": "player3",
+            "display_name": "Assassin",
+            "img": "./resource/element/transparent-c3.png",
+            "curHP": 1,
+            "maxHP": 1,
+            "movement": 4,
+            "actions": [
+                {
+                    "action_name": "action1",
+                    "action_display_name": "Swift Slash",
+                    "action_type": "Attack",
+                    "target": "Line",
+                    "range": 2,
+                    "damage": 10
+                },
+                {
+                    "action_name": "action2",
+                    "action_display_name": "Knife Throw",
+                    "action_type": "Attack",
+                    "target": "Box",
+                    "range": 3,
+                    "damage": 5
+                }
+            ]
+        },
+        {
+            "template_name": "enemy1",
+            "display_name": "Chomper",
+            "img": "./resource/element/transparent-m1.png",
+            "curHP": 1,
+            "maxHP": 1,
+            "movement": 3,
+            "actions": [
+                {
+                    "action_name": "enemy_action1",
+                    "action_display_name": "Chomp",
+                    "action_type": "Attack",
+                    "target": "Asterisk",
+                    "damage": 5,
+                    "range": 7
+                },
+                {
+                    "action_name": "enemy_action2",
+                    "action_display_name": "Vines",
+                    "action_type": "Attack",
+                    "target": "Line",
+                    "damage": 7,
+                    "range": 3
+                }
+            ]
+        },
+        {
+            "template_name": "enemy2",
+            "display_name": "Cacti",
+            "img": "./resource/element/transparent-m5.png",
+            "curHP": 1,
+            "maxHP": 1,
+            "movement": 4,
+            "actions": [
+                {
+                    "action_name": "enemy_action1",
+                    "action_display_name": "Spike",
+                    "action_type": "Attack",
+                    "target": "Line",
+                    "damage": 5,
+                    "range": 4
+                },
+                {
+                    "action_name": "enemy_action2",
+                    "action_display_name": "Thorn",
+                    "action_type": "Attack",
+                    "target": "Cross",
+                    "damage": 5,
+                    "range": 4
+                },
+                {
+                    "action_name": "enemy_action3",
+                    "action_display_name": "Nettle",
+                    "action_type": "Attack",
+                    "target": "Box",
+                    "damage": 4,
+                    "range": 5
+                }
+            ]
+        },
+        {
+            "template_name": "enemy3",
+            "display_name": "Stump",
+            "img": "./resource/element/transparent-m6.png",
+            "curHP": 1,
+            "maxHP": 1,
+            "movement": 3,
+            "actions": [
+                {
+                    "action_name": "enemy_action1",
+                    "action_display_name": "Lumber",
+                    "action_type": "Attack",
+                    "target": "Box",
+                    "damage": 6,
+                    "range": 2
+                },
+                {
+                    "action_name": "enemy_action2",
+                    "action_display_name": "Poison Root",
+                    "action_type": "Attack",
+                    "target": "Asterisk",
+                    "damage": 5,
+                    "range": 3
+                }
+            ]
+        }
+    ]
+}

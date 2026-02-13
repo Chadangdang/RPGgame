@@ -97,11 +97,12 @@ class Field:
 
     def getMovement(self, chara: Character, show: bool = True) -> np.ndarray: 
         movementMap = np.zeros((GRID_ROWS, GRID_COLS))
-        for route_number in range(4 ** chara.template['movement']):
-            # route = '{0:x}'.format(route).zfill(chara.template['movement'])
+        movement_value = getattr(chara, 'movement', chara.template.get('movement', 0))
+        for route_number in range(4 ** movement_value):
+            # route = '{0:x}'.format(route).zfill(movement_value)
             route = ''
             if route_number == 0:
-                route = '0'.zfill(chara.template['movement'])
+                route = '0'.zfill(movement_value)
             while route_number:
                 route = route + str(route_number % 4)
                 route_number //= 4
@@ -145,9 +146,9 @@ class Field:
             row, col = coords
         actionMap = np.zeros((GRID_ROWS, GRID_COLS))
         action = chara.template["actions"][actionNo]
-        action_range = action["range"]
-        action_target = action["target"]
-        action_damage = action["damage"]
+        action_range = action.get("range", 0)
+        action_target = action.get("target", "")
+        action_damage = action.get("damage", 0)
         match action_target:
             case "Line":
                 for i in range(max(0, row - action_range), min(GRID_ROWS, row + action_range + 1)):

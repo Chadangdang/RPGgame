@@ -9,6 +9,7 @@ from Cursor import *
 import numpy as np    # we doing math now :(
 import AI
 from GameMaster import GameMaster
+import GameMaster as GM
 from MapData import MapData
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
@@ -764,12 +765,39 @@ class GameMain:
             idx = 0
             while idx < len(queue):
                 line = queue[idx]
+                stripped = line.strip()
                 if "moves to grid" in line:
                     queue.pop(idx)
                     continue
                 if "passes" in line:
                     queue.pop(idx)
                     self.log_event("pass", team=team, time_elapsed=self.cumulative_time)
+                    continue
+                # Passive / status messages created by Character.attack() are added
+                # as extra lines (indented). Detect common passive keywords and
+                # convert them directly into colored log entries.
+                passive_detected = False
+                if stripped:
+                    low = stripped.lower()
+                    if ("burned" in low) or ("burn" in low and "dmg" in low):
+                        passive_detected = True
+                    if "movement reduced" in low or "movement reduced by" in low:
+                        passive_detected = True
+                    if "healed" in low and "from" in low:
+                        passive_detected = True
+                    if "reduces incoming damage" in low or "reduces incoming" in low:
+                        passive_detected = True
+                    if "heals" in low and "from" in low:
+                        passive_detected = True
+                    # Terrain/attack multipliers and similar passive messages
+                    if "deals" in low and ("x" in low or "more" in low or "due" in low or "damage" in low):
+                        passive_detected = True
+                if passive_detected:
+                    queue.pop(idx)
+                    tag = "P1" if team == 1 else "P2"
+                    color = LOG_COLOR_P1 if team == 1 else LOG_COLOR_P2
+                    # Prepend tag to make it consistent with other log lines
+                    self.log(f"{tag} : {stripped}", color, time_elapsed=self.cumulative_time)
                     continue
                 if "uses" in line:
                     if len(queue) - idx < 3:
@@ -1525,9 +1553,40 @@ class GameMain:
         self.last_map_was_random = map_was_random
 
         self.field.positionCursorOnTeam1Character()
-        self.GameMaster.setTeams(self.team1_ID, self.team2_ID)
-        self.GameMaster.team1.loadField(self.field)
-        self.GameMaster.team2.loadField(self.field)
+        # Debug: show selected AI indices and available AI list
+        try:
+            print(f"Debug: AI_list length={len(GM.AI_list)}; AI names={[c.__name__ for c in GM.AI_list]}")
+        except Exception:
+            print("Debug: could not read GM.AI_list")
+        print(f"Debug: selected team1_ID={self.team1_ID}, team2_ID={self.team2_ID}")
+
+        # Clamp indices to valid range to avoid IndexError during GameMaster.setTeams
+        try:
+            ai_count = len(GM.AI_list)
+        except Exception:
+            ai_count = 0
+
+        if not isinstance(self.team1_ID, int) or self.team1_ID < 0 or self.team1_ID >= ai_count:
+            print(f"Warning: team1_ID {self.team1_ID} out of range, defaulting to 0")
+            self.team1_ID = 0
+        if not isinstance(self.team2_ID, int) or self.team2_ID < 0 or self.team2_ID >= ai_count:
+            print(f"Warning: team2_ID {self.team2_ID} out of range, defaulting to 0")
+        # Attempt to set teams; if it fails, fall back to human players and continue
+        try:
+            self.GameMaster.setTeams(self.team1_ID, self.team2_ID)
+            self.GameMaster.team1.loadField(self.field)
+            self.GameMaster.team2.loadField(self.field)
+        except Exception as e:
+            print(f"Error setting up AIs: {e}")
+            print("Falling back to human players (Player Input)")
+            try:
+                self.team1_ID = 0
+                self.team2_ID = 0
+                self.GameMaster.setTeams(0, 0)
+                self.GameMaster.team1.loadField(self.field)
+                self.GameMaster.team2.loadField(self.field)
+            except Exception as e2:
+                print(f"Fallback also failed: {e2}")
 
         if self.GameMaster.isActiveAIHuman():
             Cursor.state = 0
@@ -1894,12 +1953,28 @@ class GameMain:
                             if chara is not None:
                                 for idx, r in self._action_rects_for_chara(chara):
                                     if r.collidepoint(event.pos):
-                                        # Choose this action and go to targeting
-                                        Cursor.selected_action = idx
-                                        Cursor.state = 4
-                                        self.field.hover_cursor.show = True
-                                        self.field.getActionArea(chara, idx)
-                                        break
+                                                # Choose this action; if it's a heal, execute instantly
+                                                Cursor.selected_action = idx
+                                                action = chara.template["actions"][idx]
+                                                if action.get("action_type", "").lower() == "heal" or action.get("heal") is not None:
+                                                    # Execute healing immediately (pass caster as target)
+                                                    self.GameMaster.activeAI.useCharaAction(chara, chara, idx, 0)
+                                                    # Reset visuals and state
+                                                    self.field.select_cursor.show = False
+                                                    Cursor.selected_action = -1
+                                                    for i in range(self.field.rows):
+                                                        for j in range(self.field.cols):
+                                                            self.field.boxes[i][j].selected_red = False
+                                                    Cursor.state = 0
+                                                    # Update end-of-turn check for human AI
+                                                    self.GameMaster.activeAI.turnFinished = self.GameMaster.activeAI.checkCharaActed()
+                                                    break
+                                                else:
+                                                    # Non-heal actions go to targeting as before
+                                                    Cursor.state = 4
+                                                    self.field.hover_cursor.show = True
+                                                    self.field.getActionArea(chara, idx)
+                                                    break
 
                         # 3) Board click: move hover to tile and act based on current state
                         grid = self._grid_from_mouse_pos(event.pos)
@@ -1943,23 +2018,41 @@ class GameMain:
                                 if getattr(box, 'selected_red', False):
                                     chara = self.field.select_cursor.getChara()
                                     target = self.field.hover_cursor.getChara()
-                                    if (chara is not None and chara in Character.team1_list) and \
-                                       (target is not None and target in Character.team2_list):
-                                        if self.field.boxes[target.grid[0]][target.grid[1]].terrain == 1:
-                                            modifier = -2
+                                    if chara is not None:
+                                        action = chara.template["actions"][Cursor.selected_action]
+                                        # Heal actions (or actions with a 'heal' field)
+                                        if action.get("action_type", "").lower() == "heal" or action.get("heal") is not None:
+                                            # Only allow healing allies
+                                            if target is not None and target in Character.team1_list:
+                                                # Execute via the active human AI to keep logs/flags consistent
+                                                self.GameMaster.activeAI.useCharaAction(chara, target, Cursor.selected_action, 0)
+                                                # Reset visuals and state (match keyboard path)
+                                                self.field.select_cursor.show = False
+                                                Cursor.selected_action = -1
+                                                for i in range(self.field.rows):
+                                                    for j in range(self.field.cols):
+                                                        self.field.boxes[i][j].selected_red = False
+                                                Cursor.state = 0
+                                                # Update end-of-turn check for human AI
+                                                self.GameMaster.activeAI.turnFinished = self.GameMaster.activeAI.checkCharaActed()
                                         else:
-                                            modifier = 0
-                                        # Execute via the active human AI to keep logs/flags consistent
-                                        self.GameMaster.activeAI.useCharaAction(chara, target, Cursor.selected_action, modifier)
-                                        # Reset visuals and state (match keyboard path)
-                                        self.field.select_cursor.show = False
-                                        Cursor.selected_action = -1
-                                        for i in range(self.field.rows):
-                                            for j in range(self.field.cols):
-                                                self.field.boxes[i][j].selected_red = False
-                                        Cursor.state = 0
-                                        # Update end-of-turn check for human AI
-                                        self.GameMaster.activeAI.turnFinished = self.GameMaster.activeAI.checkCharaActed()
+                                            # Default: offensive actions targeting enemies
+                                            if target is not None and target in Character.team2_list:
+                                                if self.field.boxes[target.grid[0]][target.grid[1]].terrain == 1:
+                                                    modifier = -2
+                                                else:
+                                                    modifier = 0
+                                                # Execute via the active human AI to keep logs/flags consistent
+                                                self.GameMaster.activeAI.useCharaAction(chara, target, Cursor.selected_action, modifier)
+                                                # Reset visuals and state (match keyboard path)
+                                                self.field.select_cursor.show = False
+                                                Cursor.selected_action = -1
+                                                for i in range(self.field.rows):
+                                                    for j in range(self.field.cols):
+                                                        self.field.boxes[i][j].selected_red = False
+                                                Cursor.state = 0
+                                                # Update end-of-turn check for human AI
+                                                self.GameMaster.activeAI.turnFinished = self.GameMaster.activeAI.checkCharaActed()
                 
                 # if event.type == pygame.KEYDOWN:
                 #     if event.key == pygame.K_p and Cursor.state != 5 and Cursor.state != 6 and self.game_state == 'attacking phase':
@@ -2774,23 +2867,28 @@ class GameMain:
                         chara = self.field.hover_cursor.getChara() if self.field.hover_cursor.getChara() else self.field.select_cursor.getChara()
                     else:
                         chara = self.field.select_cursor.getChara()
-                    for index, action in enumerate(chara.template["actions"]):
+                    for index, action in enumerate(chara.template.get("actions", [])):
                         pygame.draw.rect(self.screen, (0, 0, 0), pygame.Rect(1000, 88 + i, 220, 150), 1)
                         if Cursor.selected_action == index:
                             pygame.draw.rect(self.screen, YELLOW, pygame.Rect(1000, 88 + i, 220, 150), 4)
-                        objective_menu_text = self.font_s.render(action["action_display_name"], False, (0, 0, 0))
+                        name = action.get("action_display_name", "")
+                        atype = action.get("action_type", "")
+                        atarget = action.get("target", "")
+                        arange = action.get("range", "")
+                        adamage = action.get("damage", "")
+                        objective_menu_text = self.font_s.render(name, False, (0, 0, 0))
                         text_rect = objective_menu_text.get_rect(topleft=(1010, 90 + i))
                         self.screen.blit(objective_menu_text, text_rect)
-                        objective_menu_text = self.font_s.render(f'Type : {action["action_type"]}', False, (0, 0, 0))
+                        objective_menu_text = self.font_s.render(f'Type : {atype}', False, (0, 0, 0))
                         text_rect = objective_menu_text.get_rect(topleft=(1015, 120 + i))
                         self.screen.blit(objective_menu_text, text_rect)
-                        objective_menu_text = self.font_s.render(f'Area : {action["target"]}', False, (0, 0, 0))
+                        objective_menu_text = self.font_s.render(f'Area : {atarget}', False, (0, 0, 0))
                         text_rect = objective_menu_text.get_rect(topleft=(1015, 145 + i))
                         self.screen.blit(objective_menu_text, text_rect)
-                        objective_menu_text = self.font_s.render(f'Range : {action["range"]}', False, (0, 0, 0))
+                        objective_menu_text = self.font_s.render(f'Range : {arange}', False, (0, 0, 0))
                         text_rect = objective_menu_text.get_rect(topleft=(1015, 170 + i))
                         self.screen.blit(objective_menu_text, text_rect)
-                        objective_menu_text = self.font_s.render(f'Damage : {action["damage"]}', False, (0, 0, 0))
+                        objective_menu_text = self.font_s.render(f'Damage : {adamage}', False, (0, 0, 0))
                         text_rect = objective_menu_text.get_rect(topleft=(1015, 195 + i))
                         self.screen.blit(objective_menu_text, text_rect)
                         i += 170

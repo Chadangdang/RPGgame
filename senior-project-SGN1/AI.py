@@ -76,20 +76,35 @@ class AIFramework:
     def useCharaAction(self, chara: Character, target: Character, actionNo: int, modifier: int) -> None:
         cols = "abcdefgh"
         charaName = chara.template["display_name"]
-        actionName = chara.template["actions"][actionNo]["action_display_name"]
-        actionDamage = chara.template["actions"][actionNo]["damage"]
-        targetName = target.template["display_name"]
-        gridName = cols[target.grid[1]] + str(GRID_ROWS - target.grid[0])
+        action = chara.template["actions"][actionNo]
+        actionName = action.get("action_display_name", "")
+        actionDamage = action.get("damage")
+        actionHeal = action.get("heal")
+
+        # Prepare target display info depending on action type
+        if actionHeal is not None or action.get("action_type", "").lower() == "heal":
+            target_display = "Allies"
+            result_line = f"    Result: Healed {actionHeal} HP"
+        else:
+            targetName = target.template["display_name"] if target is not None else "Unknown"
+            gridName = cols[target.grid[1]] + str(GRID_ROWS - target.grid[0]) if target is not None else ""
+            target_display = f"{targetName} ({gridName})"
+            result_line = f"    Result: {actionDamage} damage"
 
         logs = [
             f"{charaName} uses {actionName}",
-            f"    Target: {targetName} ({gridName})",
-            f"    Result: {actionDamage} damage"
+            f"    Target: {target_display}",
+            result_line
         ]
 
         self.action_log.extend(logs)
         
-        chara.attack(target, actionNo, modifier)
+        # Attack and collect any passive activation logs (pass field for terrain-aware passives)
+        extra_logs = chara.attack(target, actionNo, modifier, self.field)
+        if extra_logs:
+            # indent extra logs for readability
+            for l in extra_logs:
+                self.action_log.append(f"    {l}")
         chara.acted = True
 
     def passCharaAction(self, chara: Character) -> None:
@@ -192,9 +207,25 @@ class PlayerInput(AIFramework):
                                 self.field.hover_cursor.show = True
                                 self.field.select_cursor.show = False
                             else:
-                                Cursor.state = 4
-                                self.field.hover_cursor.show = True
-                                self.field.getActionArea(chara, Cursor.selected_action)
+                                # If the selected action is a heal (or has a heal field), execute immediately
+                                action = chara.template["actions"][Cursor.selected_action]
+                                if action.get("action_type", "").lower() == "heal" or action.get("heal") is not None:
+                                    # For heals we pass the caster as target (attack() ignores target for heals)
+                                    self.useCharaAction(chara, chara, Cursor.selected_action, 0)
+                                    # Reset visuals/state like other immediate actions
+                                    self.field.select_cursor.show = False
+                                    # Re-enable hover cursor and clear action highlights so player can continue
+                                    self.field.hover_cursor.show = True
+                                    self.field.clearMovement()
+                                    Cursor.selected_action = -1
+                                    for i in range(self.field.rows):
+                                        for j in range(self.field.cols):
+                                            self.field.boxes[i][j].selected_red = False
+                                    Cursor.state = 0
+                                else:
+                                    Cursor.state = 4
+                                    self.field.hover_cursor.show = True
+                                    self.field.getActionArea(chara, Cursor.selected_action)
                         elif key == KEYX:
                             self.field.hover_cursor.show = True
                             self.field.select_cursor.show = False

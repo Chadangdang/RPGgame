@@ -7,6 +7,24 @@
             "curHP" : 25,
             "maxHP" : 25,
             "movement" : 3,
+            "passives": [
+                {
+                    "passive_name": "Resilient Grit",
+                    "type": "damage_reduction",
+                    "trigger": "below_hp_percent",
+                    "threshold": 0.5,
+                    "value": 3,
+                    "description": "Reduce incoming damage by 3 when HP < 50% (flat)."
+                },
+                {
+                    "passive_name": "Vampiric Riposte",
+                    "type": "lifesteal_on_hit",
+                    "trigger": "below_hp_percent",
+                    "threshold": 0.5,
+                    "value": 0.5,
+                    "description": "Recover 50% of damage dealt as HP when HP < 50%."
+                }
+            ],
             "actions": [
                 {
                     "action_name": "action1",
@@ -35,12 +53,73 @@
             ]
         },
         {
+            "template_name": "player1",
+            "display_name": "Fighter",
+            "img": "./resource/element/transparent-c2.png",
+            "curHP" : 25,
+            "maxHP" : 25,
+            "movement" : 2,
+            "passives": [
+                {
+                    "passive_name": "Resilient Grit",
+                    "type": "damage_reduction_below_pct",
+                    "trigger": "on_hit",
+                    "value": 0.2,
+                    "threshold": 0.5,
+                    "description": "When the Fighter is below 50% HP, incoming damage is reduced by 20%."
+                },
+                {
+                    "passive_name": "Vampiric Riposte",
+                    "type": "lifesteal_below_pct",
+                    "trigger": "on_deal_damage",
+                    "value": 0.3,
+                    "threshold": 0.5,
+                    "description": "When below 50% HP, the Fighter heals for 30% of damage dealt."
+                }
+            ],
+            "actions": [
+                {
+                    "action_name": "action1",
+                    "action_display_name": "Slash",
+                    "action_type": "Attack",
+                    "target" : "Box",
+                    "range" : 1,
+                    "damage" : 6
+                },
+                {
+                    "action_name": "action2",
+                    "action_display_name": "Charge",
+                    "action_type": "MoveAttack",
+                    "target" : "Line",
+                    "range" : 2,
+                    "damage" : 8
+                }
+            ]
+        },
+
+        {
             "template_name": "player2",
             "display_name": "Wizard",
             "img": "./resource/element/transparent-c2.png",
             "curHP" : 28,
             "maxHP" : 28,
             "movement" : 3,
+            "passives": [
+                {
+                    "passive_name": "Pyromancer's Reach",
+                    "type": "burn_amplify",
+                    "trigger": "on_apply",
+                    "value": 1,
+                    "description": "Burn debuffs applied by the Wizard deal +1 damage per turn."
+                },
+                {
+                    "passive_name": "Scholar's Grace",
+                    "type": "heal_bonus",
+                    "trigger": "on_heal",
+                    "value": 2,
+                    "description": "Increase amount healed by spells by +2."
+                }
+            ],
             "actions": [
                 {
                     "action_name": "action1",
@@ -65,6 +144,14 @@
                     "target" : "Line",
                     "range" : 4,
                     "damage" : 6
+                },
+                {
+                    "action_name": "action4",
+                    "action_display_name": "Healing Words",
+                    "action_type": "Heal",
+                    "target" : "Allies",
+                    "range" : 0,
+                    "heal" : 6
                 }
             ]
         },
@@ -75,6 +162,23 @@
             "curHP" : 22,
             "maxHP" : 22,
             "movement" : 4,
+            "passives": [
+                {
+                    "passive_name": "Forest Predator",
+                    "type": "terrain_multiplier",
+                    "trigger": "on_deal_damage",
+                    "terrain": ["forest", "trees"],
+                    "value": 1.5,
+                    "description": "Deals 50% more damage when attacking from forest or tree tiles."
+                },
+                {
+                    "passive_name": "Backstab",
+                    "type": "directional_bonus",
+                    "trigger": "on_deal_damage",
+                    "value": 1.5,
+                    "description": "Deals 50% more damage when attacking from behind."
+                }
+            ],
             "actions": [
                 {
                     "action_name": "action1",
@@ -82,7 +186,7 @@
                     "action_type": "Attack",
                     "target" : "Line",
                     "range" : 2,
-                    "damage" : 10
+                    "damage" : 8
                 },
                 {
                     "action_name": "action2",

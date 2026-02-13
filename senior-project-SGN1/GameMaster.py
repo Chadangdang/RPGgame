@@ -16,6 +16,30 @@ class GameMaster:
 
     def startRound(self) -> None:
         self.roundFinished = False
+        # Process per-round status effects (burn, movement debuffs)
+        for chara in Character.team1_list + Character.team2_list:
+            # process burns
+            new_effects = []
+            for eff in getattr(chara, 'status_effects', []):
+                if eff.get('type') == 'burn':
+                    dmg = eff.get('damage_per_turn', 0)
+                    chara.template['curHP'] -= dmg
+                eff['turns'] -= 1
+                if eff['turns'] > 0:
+                    new_effects.append(eff)
+            chara.status_effects = new_effects
+
+            # check movement debuff expiration
+            if getattr(chara, 'movement_debuff_turns', 0) > 0:
+                chara.movement_debuff_turns -= 1
+                if chara.movement_debuff_turns == 0:
+                    # restore movement to template default
+                    chara.movement = chara.template.get('movement', chara.movement)
+
+            # remove dead characters
+            if chara.template.get('curHP', 0) <= 0:
+                chara.alive = False
+                Character.removeCharacter(chara)
 
     def calculate(self) -> None:        
         self.activeAI.calculate()
