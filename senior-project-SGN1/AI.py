@@ -77,9 +77,13 @@ class AIFramework:
         cols = "abcdefgh"
         charaName = chara.template["display_name"]
         action = chara.template["actions"][actionNo]
-        actionName = action.get("action_display_name", "")
-        actionDamage = action.get("damage")
+        actionName = chara.template["actions"][actionNo]["action_display_name"]
         actionHeal = action.get("heal")
+        targetName = target.template["display_name"]
+        gridName = cols[target.grid[1]] + str(GRID_ROWS - target.grid[0])
+
+        # Attack once and capture calculated damage + passive/status messages.
+        dealt_damage, extra_logs = chara.attack(target, actionNo, modifier, self.field)
 
         # Prepare target display info depending on action type
         if actionHeal is not None or action.get("action_type", "").lower() == "heal":
@@ -89,7 +93,7 @@ class AIFramework:
             targetName = target.template["display_name"] if target is not None else "Unknown"
             gridName = cols[target.grid[1]] + str(GRID_ROWS - target.grid[0]) if target is not None else ""
             target_display = f"{targetName} ({gridName})"
-            result_line = f"    Result: {actionDamage} damage"
+            result_line = f"    Result: {dealt_damage} damage"
 
         logs = [
             f"{charaName} uses {actionName}",
@@ -98,13 +102,12 @@ class AIFramework:
         ]
 
         self.action_log.extend(logs)
-        
-        # Attack and collect any passive activation logs (pass field for terrain-aware passives)
-        extra_logs = chara.attack(target, actionNo, modifier, self.field)
+
         if extra_logs:
             # indent extra logs for readability
             for l in extra_logs:
                 self.action_log.append(f"    {l}")
+
         chara.acted = True
 
     def passCharaAction(self, chara: Character) -> None:
@@ -316,14 +319,14 @@ class Random(AIFramework):
 
                 # If not empty, attack one at random
                 if target_list:
-                      target = random.choice(target_list)
-                      if self.terrain[target.grid[0]][target.grid[1]] == 1:   # Target standing in a Tree tile
-                          modifier = -2
-                      elif self.terrain[target.grid[0]][target.grid[1]] == 3:
-                          modifier = 2
-                      else:
-                          modifier = 0
-                      self.useCharaAction(chara, target, chosenAction, modifier)
+                    target = random.choice(target_list)
+                    if self.terrain[target.grid[0]][target.grid[1]] == 1:   # Target standing in a Tree tile
+                        modifier = -2
+                    elif self.terrain[target.grid[0]][target.grid[1]] == 3:
+                        modifier = 2
+                    else:
+                        modifier = 0
+                    self.useCharaAction(chara, target, chosenAction, modifier)
                 break
 
         self.turnFinished = self.checkCharaActed()
@@ -561,7 +564,7 @@ class PersonalityCores(AIFramework):
         for enemy_unit in self.enemy_team:
             movementMap = np.array(
                 self.field.getMovement(enemy_unit,
-                                       False))  # Get list of coordinates that the enemy character can move to
+                                    False))  # Get list of coordinates that the enemy character can move to
 
             movementTiles = np.argwhere(
                 movementMap > 0)  # Note: Does not consider the fact that characters may not stack on the same tile
@@ -606,7 +609,7 @@ class PersonalityCores(AIFramework):
             enemy_pos_full = np.zeros((GRID_ROWS, GRID_COLS))
             enemy_pos_full[(rows, cols)] = 1
             movementMap = np.logical_and(movementMap,
-                                         np.logical_not(enemy_pos_full))  # Remove occupied tiles from consideration
+                                        np.logical_not(enemy_pos_full))  # Remove occupied tiles from consideration
             #
             ###
 

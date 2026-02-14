@@ -75,6 +75,7 @@ class GameMain:
         self.game_screen = -1
         # -1 = Start Screen
         # 0 = AI Selection Screen
+        # 0.5 = Balance Tweaking Screen
         # 1 = Game Screen
 
         # Load background image
@@ -119,6 +120,26 @@ class GameMain:
         self._model_btn_p1 = pygame.Rect(360, 590, 260, 40)
         self._model_btn_p2 = pygame.Rect(630, 590, 260, 40)
         self._start_button_rect = pygame.Rect(WIDTH // 2 - 130, 740, 260, 64)
+
+        # Balance tweaking screen widgets
+        self._balance_page_start_button_rect = pygame.Rect(WIDTH // 2 - 110, 840, 220, 60)
+        self._balance_page_start_hovered = False
+        self._balance_option_labels = [
+            'New stats',
+            'New stats +\nWeakness system',
+            'Weakness system',
+        ]
+        self._balance_option_colors = [
+            (39, 174, 96),
+            (66, 66, 245),
+            (66, 66, 245),
+        ]
+        self._balance_option_states = [False, False, False]
+        self._balance_checkbox_rects = [
+            pygame.Rect(370, 355, 24, 24),
+            pygame.Rect(553, 452, 24, 24),
+            pygame.Rect(553, 550, 24, 24),
+        ]
 
 
         self.game_state = 'selecting start area'
@@ -1436,6 +1457,28 @@ class GameMain:
             self.pause_menu_button_rect,
         ][self._pause_selected_idx]
         pygame.draw.rect(self.screen, YELLOW, selected_rect, 4)
+
+    def _is_new_stats_enabled(self) -> bool:
+        # Option 0 = "New stats", Option 1 = "New stats + Weakness system"
+        return bool(self._balance_option_states[0] or self._balance_option_states[1])
+
+    def _is_weakness_system_enabled(self) -> bool:
+        # Option 1 = "New stats + Weakness system", Option 2 = "Weakness system"
+        return bool(self._balance_option_states[1] or self._balance_option_states[2])
+
+    def _apply_new_stats_balance(self) -> None:
+        if not self._is_new_stats_enabled():
+            return
+
+        for chara in Character.team1_list + Character.team2_list:
+            name = str(chara.template.get('display_name', '')).strip().lower()
+            if name == 'fighter':
+                chara.template['maxHP'] = 36
+                chara.template['curHP'] = 36
+            elif name == 'wizard':
+                chara.template['maxHP'] = 29
+                chara.template['curHP'] = 29
+
     def screen1init(self):
 
         self.match_limit = max(self._match_limit_min, min(self._match_limit_max, self.match_limit))
@@ -1470,6 +1513,8 @@ class GameMain:
     def startMatch(self) -> None:
         self.currentMatch += 1
         self.cumulative_time = 0.0  
+
+        Character.setWeaknessSystem(self._is_weakness_system_enabled())
 
         self._ai_log_len = {}
         self._ai_pending_lines.clear()
@@ -1534,6 +1579,9 @@ class GameMain:
                         (self.field.boxes_width, self.field.boxes_height),
                         (pos[0], pos[1]),
                         "player" + str(i + 1), team=2)
+
+        # Apply optional balance tweaks from the Balance Tweaking page.
+        self._apply_new_stats_balance()
 
         self.last_team1_ID = self.team1_ID
         self.last_team2_ID = self.team2_ID
@@ -1697,7 +1745,7 @@ class GameMain:
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_RETURN:
                         if self.p1_sel_cursor.show and self.p2_sel_cursor.show:
-                            self.screen1init()
+                            self.game_screen = 0.5
             # ESC exits the app on AI-select page
                     if event.key == pygame.K_ESCAPE:
                         pygame.quit()
@@ -1738,7 +1786,7 @@ class GameMain:
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     if event.button == 1:
                         if self._start_button_rect.collidepoint(event.pos) and self.p1_sel_cursor.show and self.p2_sel_cursor.show:
-                            self.screen1init()
+                            self.game_screen = 0.5
                             continue
                         if (self._map_select_button_rect.collidepoint(event.pos) or self._map_preview_thumb_rect.collidepoint(event.pos)):
                             self._map_popup_open = True
@@ -1826,6 +1874,43 @@ class GameMain:
                         self._model_scroll_offset -= event.y
                         self._model_scroll_offset = max(0, min(self._model_scroll_offset, self._model_max_offset()))
 
+
+        elif self.game_screen == 0.5:
+            mouse_pos = pygame.mouse.get_pos()
+            self._balance_page_start_hovered = self._balance_page_start_button_rect.collidepoint(mouse_pos)
+
+            # Keep this page in strict single-select mode.
+            selected_indices = [i for i, checked in enumerate(self._balance_option_states) if checked]
+            if len(selected_indices) > 1:
+                keep_idx = selected_indices[0]
+                self._balance_option_states = [i == keep_idx for i in range(len(self._balance_option_states))]
+
+            for event in events:
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
+                        self.screen1init()
+                    elif event.key == pygame.K_ESCAPE:
+                        self.game_screen = 0
+
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    if self._balance_page_start_button_rect.collidepoint(event.pos):
+                        self.screen1init()
+                        continue
+                    active_idx = next((i for i, checked in enumerate(self._balance_option_states) if checked), None)
+                    for idx, checkbox_rect in enumerate(self._balance_checkbox_rects):
+                        if checkbox_rect.collidepoint(event.pos):
+                            if active_idx is None:
+                                # First selection: choose exactly one and disable others.
+                                self._balance_option_states = [i == idx for i in range(len(self._balance_option_states))]
+                            elif idx == active_idx:
+                                # Uncheck selected one: re-enable all.
+                                self._balance_option_states = [False for _ in self._balance_option_states]
+                            # else: another option is active -> this one is disabled/unclickable
+                            break
 
         elif self.game_screen == 1:
             self.cumulative_time += dt
@@ -2649,12 +2734,12 @@ class GameMain:
             draw_column(True)
             draw_column(False)
 
-            # Start button (replaces static "Enter to start" text)
+            # Next button (goes to balance tweaking screen)
             start_hovered = self._start_button_rect.collidepoint(pygame.mouse.get_pos())
             start_fill = (255, 255, 255) if not start_hovered else (240, 240, 240)
             pygame.draw.rect(self.screen, start_fill, self._start_button_rect)
             pygame.draw.rect(self.screen, BLACK, self._start_button_rect, 2)
-            start_text = self.font_sm.render('START', False, (0, 0, 0))
+            start_text = self.font_sm.render('NEXT', False, (0, 0, 0))
             self.screen.blit(start_text, start_text.get_rect(center=self._start_button_rect.center))
 
             # Bottom-left: Auto and match limit widgets (reuse existing controls)
@@ -2764,6 +2849,48 @@ class GameMain:
                 select_text = self.font_sm.render("SELECT", False, (0, 0, 0))
                 self.screen.blit(select_text, select_text.get_rect(center=self._map_popup_select_rect.center))
 
+        elif self.game_screen == 0.5:
+            self.screen.fill((214, 204, 188))
+
+            title_text = self.font_m.render('Balance Tweaking', False, (0, 0, 0))
+            self.screen.blit(title_text, title_text.get_rect(center=(WIDTH // 2, 190)))
+
+            # Option 1: New stats (green)
+            option1_pos = (120, 350)
+            option1_text = self.font_sm.render(self._balance_option_labels[0], False, (39, 174, 96))
+            self.screen.blit(option1_text, option1_text.get_rect(topleft=option1_pos))
+
+            # Option 2: New stats + (green + black) / Weakness system (blue)
+            option2_pos = (120, 440)
+            option2_line1_left = self.font_sm.render('New stats', False, (39, 174, 96))
+            self.screen.blit(option2_line1_left, option2_line1_left.get_rect(topleft=option2_pos))
+            plus_x = option2_pos[0] + option2_line1_left.get_width() + 12
+            option2_plus = self.font_sm.render('+', False, (0, 0, 0))
+            self.screen.blit(option2_plus, option2_plus.get_rect(topleft=(plus_x, option2_pos[1])))
+            option2_line2 = self.font_sm.render('Weakness system', False, (66, 66, 245))
+            self.screen.blit(option2_line2, option2_line2.get_rect(topleft=(option2_pos[0], option2_pos[1] + 40)))
+
+            # Option 3: Weakness system (blue)
+            option3_pos = (120, 545)
+            option3_text = self.font_sm.render(self._balance_option_labels[2], False, (66, 66, 245))
+            self.screen.blit(option3_text, option3_text.get_rect(topleft=option3_pos))
+
+            active_idx = next((i for i, checked in enumerate(self._balance_option_states) if checked), None)
+            for idx, checkbox_rect in enumerate(self._balance_checkbox_rects):
+                is_disabled = (active_idx is not None and idx != active_idx)
+                fill_color = (200, 200, 200) if is_disabled else (245, 245, 245)
+                border_color = (130, 130, 130) if is_disabled else (85, 85, 85)
+                pygame.draw.rect(self.screen, fill_color, checkbox_rect)
+                pygame.draw.rect(self.screen, border_color, checkbox_rect, 2)
+                if self._balance_option_states[idx]:
+                    pygame.draw.line(self.screen, (0, 0, 0), (checkbox_rect.left + 4, checkbox_rect.centery), (checkbox_rect.centerx - 1, checkbox_rect.bottom - 4), 3)
+                    pygame.draw.line(self.screen, (0, 0, 0), (checkbox_rect.centerx - 1, checkbox_rect.bottom - 4), (checkbox_rect.right - 4, checkbox_rect.top + 4), 3)
+
+            button_fill = (235, 235, 235) if not self._balance_page_start_hovered else (223, 223, 223)
+            pygame.draw.rect(self.screen, button_fill, self._balance_page_start_button_rect)
+            pygame.draw.rect(self.screen, (60, 60, 60), self._balance_page_start_button_rect, 2)
+            start_text = self.font_sm.render('START', False, (0, 0, 0))
+            self.screen.blit(start_text, start_text.get_rect(center=self._balance_page_start_button_rect.center))
 
         elif self.game_screen == 1:
             self.screen.fill(SMOKE)

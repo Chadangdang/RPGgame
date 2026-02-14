@@ -6,6 +6,33 @@ class Character:
     id = 0
     team1_list: list['Character'] = []
     team2_list: list['Character'] = []
+    weakness_system_enabled = False
+
+    @staticmethod
+    def setWeaknessSystem(enabled: bool) -> None:
+        Character.weakness_system_enabled = bool(enabled)
+
+    @staticmethod
+    def _damage_multiplier(attacker: 'Character', target: 'Character') -> float:
+        if not Character.weakness_system_enabled:
+            return 1.0
+
+        atk = str(attacker.template.get('display_name', '')).strip().lower()
+        dfn = str(target.template.get('display_name', '')).strip().lower()
+
+        # Advantage cycle:
+        # Fighter > Assassin > Wizard > Fighter
+        advantage_pairs = {
+            ('fighter', 'assassin'),
+            ('assassin', 'wizard'),
+            ('wizard', 'fighter'),
+        }
+
+        if (atk, dfn) in advantage_pairs:
+            return 1.15
+        if (dfn, atk) in advantage_pairs:
+            return 0.85
+        return 1.0
 
     @staticmethod
     def getCharacterByID(id) -> 'Character | None':
@@ -71,7 +98,7 @@ class Character:
         if update:
             self.moved = True
 
-    def attack(self, target: 'Character', selected_action: int, modifier: int = 0, field=None) -> None:
+    def attack(self, target: 'Character', selected_action: int, modifier: int = 0, field=None) -> tuple[int, list[str]]:
         logs: list[str] = []
         action = self.template["actions"][selected_action]
         base = action.get("damage", 0) + modifier
@@ -92,7 +119,7 @@ class Character:
                 healed = ally.template['curHP'] - before
                 logs.append(f"{ally.template.get('display_name')} healed {healed} HP from {action.get('action_display_name','Heal')}")
             self.acted = True
-            return logs
+            return 0, logs
 
         # Apply attacker passives that modify outgoing damage (terrain multipliers etc.)
         damage = base
@@ -126,6 +153,15 @@ class Character:
                         old = damage
                         damage = int(damage * multiplier)
                         logs.append(f"{self.template.get('display_name')} deals {multiplier}x damage due to {passive.get('passive_name','terrain passive')}")
+
+        # Weakness system multiplier (if enabled)
+        weakness_mult = Character._damage_multiplier(self, target)
+        if weakness_mult != 1.0:
+            old = damage
+            damage = int(round(damage * weakness_mult))
+            logs.append(
+                f"{self.template.get('display_name')} deals {weakness_mult:.2f}x damage to {target.template.get('display_name')} (from {old} to {damage})"
+            )
 
         # Damage reduction from target passives
         for passive in target.template.get('passives', []):
@@ -200,7 +236,7 @@ class Character:
             target.alive = False
             Character.removeCharacter(target)
         self.acted = True
-        return logs
+        return damage, logs
 
     def reset(self) -> None:
         self.moved = False
