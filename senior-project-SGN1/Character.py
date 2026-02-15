@@ -7,10 +7,16 @@ class Character:
     team1_list: list['Character'] = []
     team2_list: list['Character'] = []
     weakness_system_enabled = False
+    fireball_burn_mode = 'default'
 
     @staticmethod
     def setWeaknessSystem(enabled: bool) -> None:
         Character.weakness_system_enabled = bool(enabled)
+
+    @staticmethod
+    def setFireballBurnMode(mode: str) -> None:
+        allowed = {'default', 'new_stats_only', 'new_stats_weakness'}
+        Character.fireball_burn_mode = mode if mode in allowed else 'default'
 
     @staticmethod
     def _damage_multiplier(attacker: 'Character', target: 'Character') -> float:
@@ -194,7 +200,17 @@ class Character:
         if 'fire' in action_name or 'burn' in action_name:
             # Special-case Fireball: fixed burn of 3 per turn for 2 turns
             if 'fireball' in action_name:
-                burn_dmg = 3
+                if Character.fireball_burn_mode == 'new_stats_only':
+                    burn_dmg = 3
+                elif Character.fireball_burn_mode == 'new_stats_weakness':
+                    burn_base = 3
+                    burn_mult = Character._damage_multiplier(self, target)
+                    if burn_mult >= 1.0:
+                        burn_dmg = max(1, int((burn_base * burn_mult) + 0.9999))
+                    else:
+                        burn_dmg = max(1, int(burn_base * burn_mult))
+                else:
+                    burn_dmg = 3
                 burn_turns = 2
             else:
                 burn_dmg = max(1, int(damage * 0.5))

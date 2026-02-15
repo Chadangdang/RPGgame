@@ -140,6 +140,7 @@ class GameMain:
             pygame.Rect(553, 452, 24, 24),
             pygame.Rect(553, 550, 24, 24),
         ]
+        self._balance_keyboard_index = 0
 
 
         self.game_state = 'selecting start area'
@@ -254,6 +255,12 @@ class GameMain:
         # Pass player turn button
         self.pass_turn_button_rect = pygame.Rect(987, 620, 245, 45)
         self.pass_turn_button_hovered = False
+        # Action list scrolling (right panel, human player)
+        self._action_list_scroll = 0
+        self._action_list_scroll_step = 40
+        self._action_list_active_chara_id: int | None = None
+        self._action_sb_dragging = False
+        self._action_sb_drag_offset_y = 0
         # Pause button
         self.pause_game_button_rect = pygame.Rect(40, 40, 260, 56)
         self.pause_game_button_hovered = False
@@ -1108,14 +1115,96 @@ class GameMain:
         col = max(0, min(self.field.cols - 1, col))
         return (row, col)
 
-    def _action_rects_for_chara(self, chara) -> list[tuple[int, pygame.Rect]]:
+    def _action_panel_content_rect(self) -> pygame.Rect:
+        # Visible content area inside the right-side Actions List panel
+        # Header at y=50, first card starts at y=88, panel bottom is y=600.
+        return pygame.Rect(1000, 88, 220, 512)
+
+    def _action_rects_for_chara(self, chara, scroll_offset: int = 0) -> list[tuple[int, pygame.Rect]]:
         # Return list of (action_index, rect) for the Actions List UI of a character.
         rects: list[tuple[int, pygame.Rect]] = []
         i = 0
         for idx, _ in enumerate(chara.template.get("actions", [])):
-            rects.append((idx, pygame.Rect(1000, 88 + i, 220, 150)))
+            rects.append((idx, pygame.Rect(1000, 88 + i - scroll_offset, 220, 150)))
             i += 170
         return rects
+
+    def _get_action_list_chara(self):
+        if not hasattr(self, 'field'):
+            return None
+        if Cursor.state != 4:
+            return self.field.hover_cursor.getChara() if self.field.hover_cursor.getChara() else self.field.select_cursor.getChara()
+        return self.field.select_cursor.getChara()
+
+    def _max_action_list_scroll(self, chara) -> int:
+        if chara is None:
+            return 0
+        actions_count = len(chara.template.get("actions", []))
+        if actions_count <= 0:
+            return 0
+        total_height = 170 + max(0, actions_count - 1) * 170
+        visible_h = self._action_panel_content_rect().height
+        return max(0, total_height - visible_h)
+
+    def _action_scrollbar_geometry(self, chara):
+        # Reuse game-log scrollbar style, but with a shorter track for the action panel.
+        if chara is None:
+            return None
+        max_scroll = self._max_action_list_scroll(chara)
+        if max_scroll <= 0:
+            return None
+
+        panel = self._action_panel_content_rect()
+        track_h = 380
+        # Place scrollbar slightly more to the right and start a bit higher.
+        track_y = panel.y + 12
+        track_rect = pygame.Rect(panel.right + 10, track_y, 8, track_h)
+
+        total_height = 150 + max(0, len(chara.template.get("actions", [])) - 1) * 170
+        visible_fraction = panel.height / max(1, total_height)
+        thumb_h = max(24, int(track_rect.height * visible_fraction))
+        thumb_h = min(thumb_h, track_rect.height)
+
+        if max_scroll == 0:
+            thumb_y = track_rect.y
+        else:
+            ratio = self._action_list_scroll / max_scroll
+            thumb_y = int(track_rect.y + ratio * (track_rect.height - thumb_h))
+
+        thumb_rect = pygame.Rect(track_rect.x, thumb_y, track_rect.width, thumb_h)
+        return {
+            "track_rect": track_rect,
+            "thumb_rect": thumb_rect,
+            "max_scroll": max_scroll,
+        }
+
+    def _sync_action_list_to_selection(self) -> None:
+        """When using keyboard in action menu, keep selected action card visible."""
+        if Cursor.state != 2:
+            return
+
+        chara = self._get_action_list_chara()
+        if chara is None:
+            return
+        if str(chara.template.get("display_name", "")).strip().lower() != "wizard":
+            return
+
+        actions_count = len(chara.template.get("actions", []))
+        selected_idx = Cursor.selected_action
+        if selected_idx < 0 or selected_idx >= actions_count:
+            return
+
+        content_rect = self._action_panel_content_rect()
+        card_top = 88 + (selected_idx * 170) - self._action_list_scroll
+        card_bottom = card_top + 150
+
+        if card_top < content_rect.top:
+            self._action_list_scroll += card_top - content_rect.top
+        elif card_bottom > content_rect.bottom:
+            self._action_list_scroll += card_bottom - content_rect.bottom
+
+        max_scroll = self._max_action_list_scroll(chara)
+        self._action_list_scroll = max(0, min(self._action_list_scroll, max_scroll))
 
     def _extract_field_map_id(self) -> int | None:
         """Return the numeric map id from the current field, if available."""
@@ -1466,6 +1555,15 @@ class GameMain:
         # Option 1 = "New stats + Weakness system", Option 2 = "Weakness system"
         return bool(self._balance_option_states[1] or self._balance_option_states[2])
 
+    def _fireball_burn_mode(self) -> str:
+        # Option 0 = New stats only
+        # Option 1 = New stats + Weakness system
+        if self._balance_option_states[1]:
+            return 'new_stats_weakness'
+        if self._balance_option_states[0]:
+            return 'new_stats_only'
+        return 'default'
+
     def _apply_new_stats_balance(self) -> None:
         if not self._is_new_stats_enabled():
             return
@@ -1515,6 +1613,7 @@ class GameMain:
         self.cumulative_time = 0.0  
 
         Character.setWeaknessSystem(self._is_weakness_system_enabled())
+        Character.setFireballBurnMode(self._fireball_burn_mode())
 
         self._ai_log_len = {}
         self._ai_pending_lines.clear()
@@ -1895,6 +1994,21 @@ class GameMain:
                         self.screen1init()
                     elif event.key == pygame.K_ESCAPE:
                         self.game_screen = 0
+                    elif event.key == pygame.K_UP:
+                        self._balance_keyboard_index = (self._balance_keyboard_index - 1) % len(self._balance_checkbox_rects)
+                    elif event.key == pygame.K_DOWN:
+                        self._balance_keyboard_index = (self._balance_keyboard_index + 1) % len(self._balance_checkbox_rects)
+                    elif event.key == pygame.K_z:
+                        active_idx = next((i for i, checked in enumerate(self._balance_option_states) if checked), None)
+                        if active_idx is None:
+                            self._balance_option_states = [i == self._balance_keyboard_index for i in range(len(self._balance_option_states))]
+                        elif active_idx == self._balance_keyboard_index:
+                            # keep selected as-is
+                            pass
+                        # else: another option is selected, this one remains disabled until unselected with X
+                    elif event.key == pygame.K_x:
+                        if self._balance_option_states[self._balance_keyboard_index]:
+                            self._balance_option_states = [False for _ in self._balance_option_states]
 
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     if self._balance_page_start_button_rect.collidepoint(event.pos):
@@ -1948,6 +2062,15 @@ class GameMain:
                 self._reset_endgame_hover_states()
                 self._reset_pause_hover_states()
 
+            # Keep action-list scroll bounded and reset when focused unit changes
+            action_chara = self._get_action_list_chara()
+            action_chara_id = action_chara.id if action_chara is not None else None
+            if action_chara_id != self._action_list_active_chara_id:
+                self._action_list_active_chara_id = action_chara_id
+                self._action_list_scroll = 0
+            self._action_list_scroll = max(0, min(self._action_list_scroll, self._max_action_list_scroll(action_chara)))
+            action_sb_geom = self._action_scrollbar_geometry(action_chara)
+
             for event in events:
                 if event.type == pygame.QUIT:
                     pygame.quit()
@@ -1964,6 +2087,57 @@ class GameMain:
                 if self._handle_log_event(event, geom):
                     continue
 
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and self.GameMaster.isActiveAIHuman():
+                    current_chara = self._get_action_list_chara()
+                    is_wizard = (current_chara is not None and str(current_chara.template.get("display_name", "")).strip().lower() == "wizard")
+                    if is_wizard and action_sb_geom is not None:
+                        mx, my = event.pos
+                        track_rect = action_sb_geom["track_rect"]
+                        thumb_rect = action_sb_geom["thumb_rect"]
+                        if thumb_rect.collidepoint(mx, my):
+                            self._action_sb_dragging = True
+                            self._action_sb_drag_offset_y = my - thumb_rect.y
+                            continue
+                        if track_rect.collidepoint(mx, my):
+                            if my < thumb_rect.y:
+                                self._action_list_scroll = max(0, self._action_list_scroll - self._action_list_scroll_step * 4)
+                            elif my > thumb_rect.bottom:
+                                self._action_list_scroll = min(action_sb_geom["max_scroll"], self._action_list_scroll + self._action_list_scroll_step * 4)
+                            continue
+
+                if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                    if self._action_sb_dragging:
+                        self._action_sb_dragging = False
+                        continue
+
+                if event.type == pygame.MOUSEMOTION and self._action_sb_dragging and action_sb_geom is not None:
+                    mx, my = event.pos
+                    track_rect = action_sb_geom["track_rect"]
+                    thumb_rect = action_sb_geom["thumb_rect"]
+                    max_scroll = action_sb_geom["max_scroll"]
+                    new_thumb_y = my - self._action_sb_drag_offset_y
+                    min_y = track_rect.y
+                    max_y = track_rect.bottom - thumb_rect.height
+                    new_thumb_y = max(min_y, min(max_y, new_thumb_y))
+
+                    if max_scroll == 0 or track_rect.height == thumb_rect.height:
+                        self._action_list_scroll = 0
+                    else:
+                        ratio = (new_thumb_y - track_rect.y) / (track_rect.height - thumb_rect.height)
+                        self._action_list_scroll = int(round(ratio * max_scroll))
+                    continue
+
+                if event.type == pygame.MOUSEWHEEL and self.GameMaster.isActiveAIHuman():
+                    if self._action_panel_content_rect().collidepoint(pygame.mouse.get_pos()):
+                        current_chara = self._get_action_list_chara()
+                        if current_chara is not None and str(current_chara.template.get("display_name", "")).strip().lower() == "wizard":
+                            max_scroll = self._max_action_list_scroll(current_chara)
+                            self._action_list_scroll = max(
+                                0,
+                                min(max_scroll, self._action_list_scroll - (event.y * self._action_list_scroll_step))
+                            )
+                        continue
+
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_1:
                         self.action_delay = 0.1
@@ -1973,6 +2147,7 @@ class GameMain:
                         self.action_delay = 0.8
                     elif event.key in [pygame.K_UP, pygame.K_DOWN, pygame.K_LEFT, pygame.K_RIGHT, pygame.K_z, pygame.K_x]:
                         self.GameMaster.keyInput(event.key)
+                        self._sync_action_list_to_selection()
                     elif event.key == pygame.K_ESCAPE:
                         # Open pause only when human is active and not in endgame
                         if self.GameMaster.isActiveAIHuman() and not endgame_active:
@@ -2036,8 +2211,11 @@ class GameMain:
                         if Cursor.state == 2:
                             chara = self.field.select_cursor.getChara()
                             if chara is not None:
-                                for idx, r in self._action_rects_for_chara(chara):
-                                    if r.collidepoint(event.pos):
+                                if self._action_panel_content_rect().collidepoint(event.pos):
+                                    for idx, r in self._action_rects_for_chara(chara, self._action_list_scroll):
+                                        if not self._action_panel_content_rect().colliderect(r):
+                                            continue
+                                        if r.collidepoint(event.pos):
                                                 # Choose this action; if it's a heal, execute instantly
                                                 Cursor.selected_action = idx
                                                 action = chara.template["actions"][idx]
@@ -2882,6 +3060,8 @@ class GameMain:
                 border_color = (130, 130, 130) if is_disabled else (85, 85, 85)
                 pygame.draw.rect(self.screen, fill_color, checkbox_rect)
                 pygame.draw.rect(self.screen, border_color, checkbox_rect, 2)
+                if idx == self._balance_keyboard_index:
+                    pygame.draw.rect(self.screen, YELLOW, checkbox_rect, 3)
                 if self._balance_option_states[idx]:
                     pygame.draw.line(self.screen, (0, 0, 0), (checkbox_rect.left + 4, checkbox_rect.centery), (checkbox_rect.centerx - 1, checkbox_rect.bottom - 4), 3)
                     pygame.draw.line(self.screen, (0, 0, 0), (checkbox_rect.centerx - 1, checkbox_rect.bottom - 4), (checkbox_rect.right - 4, checkbox_rect.top + 4), 3)
@@ -2984,41 +3164,64 @@ class GameMain:
                     self.screen.blit(text, text_rect)
                     i += 20
             else:
-                pygame.draw.rect(self.screen, (0, 0, 0), pygame.Rect(980, 40, 260, 560), 2)
+                pygame.draw.rect(self.screen, (0, 0, 0), pygame.Rect(980, 40, 280, 560), 2)
                 objective_menu_text = self.font_s.render("Actions List", False, (0, 0, 0))
                 text_rect = objective_menu_text.get_rect(topleft=(990, 50))
                 self.screen.blit(objective_menu_text, text_rect)
-                i = 0
-                if self.field.hover_cursor.getChara() or self.field.select_cursor.getChara():
-                    if Cursor.state != 4:
-                        chara = self.field.hover_cursor.getChara() if self.field.hover_cursor.getChara() else self.field.select_cursor.getChara()
-                    else:
-                        chara = self.field.select_cursor.getChara()
+                action_content_rect = self._action_panel_content_rect()
+                if (chara := self._get_action_list_chara()) is not None:
+                    old_clip = self.screen.get_clip()
+                    self.screen.set_clip(action_content_rect)
                     for index, action in enumerate(chara.template.get("actions", [])):
-                        pygame.draw.rect(self.screen, (0, 0, 0), pygame.Rect(1000, 88 + i, 220, 150), 1)
+                        card_rect = pygame.Rect(1000, 88 + (index * 170) - self._action_list_scroll, 220, 150)
+                        if not action_content_rect.colliderect(card_rect):
+                            continue
+
+                        pygame.draw.rect(self.screen, (0, 0, 0), card_rect, 1)
                         if Cursor.selected_action == index:
-                            pygame.draw.rect(self.screen, YELLOW, pygame.Rect(1000, 88 + i, 220, 150), 4)
+                            pygame.draw.rect(self.screen, YELLOW, card_rect, 4)
                         name = action.get("action_display_name", "")
                         atype = action.get("action_type", "")
                         atarget = action.get("target", "")
                         arange = action.get("range", "")
                         adamage = action.get("damage", "")
+                        aheal = action.get("heal", "")
                         objective_menu_text = self.font_s.render(name, False, (0, 0, 0))
-                        text_rect = objective_menu_text.get_rect(topleft=(1010, 90 + i))
+                        text_rect = objective_menu_text.get_rect(topleft=(card_rect.x + 10, card_rect.y + 2))
                         self.screen.blit(objective_menu_text, text_rect)
                         objective_menu_text = self.font_s.render(f'Type : {atype}', False, (0, 0, 0))
-                        text_rect = objective_menu_text.get_rect(topleft=(1015, 120 + i))
+                        text_rect = objective_menu_text.get_rect(topleft=(card_rect.x + 15, card_rect.y + 32))
                         self.screen.blit(objective_menu_text, text_rect)
                         objective_menu_text = self.font_s.render(f'Area : {atarget}', False, (0, 0, 0))
-                        text_rect = objective_menu_text.get_rect(topleft=(1015, 145 + i))
+                        text_rect = objective_menu_text.get_rect(topleft=(card_rect.x + 15, card_rect.y + 57))
                         self.screen.blit(objective_menu_text, text_rect)
                         objective_menu_text = self.font_s.render(f'Range : {arange}', False, (0, 0, 0))
-                        text_rect = objective_menu_text.get_rect(topleft=(1015, 170 + i))
+                        text_rect = objective_menu_text.get_rect(topleft=(card_rect.x + 15, card_rect.y + 82))
                         self.screen.blit(objective_menu_text, text_rect)
-                        objective_menu_text = self.font_s.render(f'Damage : {adamage}', False, (0, 0, 0))
-                        text_rect = objective_menu_text.get_rect(topleft=(1015, 195 + i))
+                        if str(atype).lower() == "heal" or action.get("heal") is not None:
+                            value_text = f'Heal : {aheal}'
+                        else:
+                            value_text = f'Damage : {adamage}'
+                        objective_menu_text = self.font_s.render(value_text, False, (0, 0, 0))
+                        text_rect = objective_menu_text.get_rect(topleft=(card_rect.x + 15, card_rect.y + 107))
                         self.screen.blit(objective_menu_text, text_rect)
-                        i += 170
+                    self.screen.set_clip(old_clip)
+
+                    # Show short scrollbar (same style as game log) when wizard has more actions.
+                    is_wizard = str(chara.template.get("display_name", "")).strip().lower() == "wizard"
+                    if is_wizard:
+                        sb_geom = self._action_scrollbar_geometry(chara)
+                        if sb_geom is not None:
+                            pygame.draw.rect(self.screen, SB_TRACK, sb_geom["track_rect"], border_radius=5)
+                            mouse_pos = pygame.mouse.get_pos()
+                            if self._action_sb_dragging:
+                                thumb_color = SB_THUMB_DRAG
+                            elif sb_geom["thumb_rect"].collidepoint(mouse_pos):
+                                thumb_color = SB_THUMB_HOVER
+                            else:
+                                thumb_color = SB_THUMB
+                            pygame.draw.rect(self.screen, thumb_color, sb_geom["thumb_rect"], border_radius=5)
+                            pygame.draw.rect(self.screen, UI_BORDER, sb_geom["thumb_rect"], 1, border_radius=5)
                 # Pass player turn button (mouse only)
                 # Draw button with hover highlight
                 pygame.draw.rect(self.screen, (235, 235, 235), self.pass_turn_button_rect)
