@@ -270,7 +270,7 @@ class GameMainInitMixin:
         self.pause_resume_hovered = False
         self.pause_restart_hovered = False
         self.pause_menu_hovered = False
-        self._pause_selected_idx = 0  # 0=Resume, 1=Restart, 2=Menu
+        self._pause_selected_idx = None  # 0=Resume, 1=Restart, 2=Menu; None until keyboard nav
 
         self.GameMaster = GameMaster()
         self.currentMatch = 0

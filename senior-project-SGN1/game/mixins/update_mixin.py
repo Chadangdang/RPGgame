@@ -432,7 +432,7 @@ class GameMainUpdateMixin:
                         # Open pause only when human is active and not in endgame
                         if self.GameMaster.isActiveAIHuman() and not endgame_active:
                             self._pause_active = True
-                            self._pause_selected_idx = 0
+                            self._pause_selected_idx = None
                     elif event.key == pygame.K_p:
                         if self.GameMaster.isActiveAIHuman():
                             self.GameMaster.activeAI.turnFinished = True
@@ -476,7 +476,7 @@ class GameMainUpdateMixin:
                         # 0) Pause button
                         if self._is_pause_button_available() and self.pause_game_button_rect.collidepoint(event.pos):
                             self._pause_active = True
-                            self._pause_selected_idx = 0
+                            self._pause_selected_idx = None
                             continue
                         # 1) Pass-turn button
                         if self.pass_turn_button_rect.collidepoint(event.pos):

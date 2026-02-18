@@ -271,10 +271,16 @@ class GameMainFlowUiMixin:
                 self._pause_active = False
                 self._reset_pause_hover_states()
             elif event.key == pygame.K_LEFT:
+                if self._pause_selected_idx is None:
+                    self._pause_selected_idx = 0
                 self._pause_selected_idx = (self._pause_selected_idx - 1) % 3
             elif event.key == pygame.K_RIGHT:
+                if self._pause_selected_idx is None:
+                    self._pause_selected_idx = 0
                 self._pause_selected_idx = (self._pause_selected_idx + 1) % 3
             elif event.key == pygame.K_z:
+                if self._pause_selected_idx is None:
+                    self._pause_selected_idx = 0
                 if self._pause_selected_idx == 0:  # Resume
                     self._pause_active = False
                     self._reset_pause_hover_states()
@@ -320,13 +326,14 @@ class GameMainFlowUiMixin:
         self._draw_endgame_button(self.pause_restart_button_rect, 'RESTART', self.pause_restart_hovered)
         self._draw_endgame_button(self.pause_menu_button_rect, 'MENU', self.pause_menu_hovered)
 
-        # Yellow highlight for endgame button
-        selected_rect = [
-            self.pause_resume_button_rect,
-            self.pause_restart_button_rect,
-            self.pause_menu_button_rect,
-        ][self._pause_selected_idx]
-        pygame.draw.rect(self.screen, YELLOW, selected_rect, 4)
+        # Yellow highlight for pause button (keyboard selection only)
+        if self._pause_selected_idx is not None:
+            selected_rect = [
+                self.pause_resume_button_rect,
+                self.pause_restart_button_rect,
+                self.pause_menu_button_rect,
+            ][self._pause_selected_idx]
+            pygame.draw.rect(self.screen, YELLOW, selected_rect, 4)
 
     def _is_new_stats_enabled(self) -> bool:
         # Option 0 = "New stats", Option 1 = "New stats + Weakness system"
