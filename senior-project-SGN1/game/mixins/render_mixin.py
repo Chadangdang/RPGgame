@@ -127,7 +127,7 @@ class GameMainRenderMixin:
         ratio = max(0.0, min(1.0, ratio))
         return int(round(ratio * max_offset))
 
-    def render(self) -> None:
+    def render(self, dt: float = 0.0) -> None:
         if self.game_screen == -1:      # Start screen
             # Draw background
             self.screen.blit(self.background, (0, 0))

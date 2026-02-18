@@ -16,6 +16,6 @@ def run_game() -> None:
         events = pygame.event.get()
 
         main.update(dt, events)
-        main.render()
+        main.render(dt)
 
         pygame.display.update()
