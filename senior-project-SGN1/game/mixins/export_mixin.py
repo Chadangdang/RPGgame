@@ -54,25 +54,58 @@ SB_THUMB       = (160, 150, 135)
 SB_THUMB_HOVER = (145, 135, 120)
 SB_THUMB_DRAG  = (130, 120, 105)
 
+
 class GameMainExportMixin:
     def export_game_log(self) -> None:
-        """Export the game log to an Excel file with 'Game Log' and 'Match Summary' sheets."""
+        """Export all played matches in one workbook with per-match Game Log + Match Summary sheets."""
+
         def safe_int(s, default=0):
             try:
                 return int(s)
             except (ValueError, TypeError):
                 return default
 
-        try:
-            import openpyxl
-            from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
-            from datetime import datetime
-            import os
+        def parse_match_number(message: str) -> int | None:
+            if "Match " not in message:
+                return None
+            try:
+                return int(message.split("Match ")[1].split()[0])
+            except (ValueError, IndexError):
+                return None
 
+        def parse_round_number(message: str) -> int | None:
+            if "Round " not in message:
+                return None
+            try:
+                return int(message.split("Round ")[1].split()[0])
+            except (ValueError, IndexError):
+                return None
+
+        def make_sheet_title(raw_title: str, used_titles: set[str]) -> str:
+            # Excel/openpyxl constraints: max 31 chars and no []:*?/\
+            invalid_chars = set('[]:*?/\\')
+            cleaned = ''.join('_' if ch in invalid_chars else ch for ch in raw_title).strip()
+            if not cleaned:
+                cleaned = 'Sheet'
+            cleaned = cleaned[:31]
+
+            if cleaned not in used_titles:
+                used_titles.add(cleaned)
+                return cleaned
+
+            suffix = 2
+            while True:
+                suffix_text = f"_{suffix}"
+                base = cleaned[:31 - len(suffix_text)]
+                candidate = f"{base}{suffix_text}"
+                if candidate not in used_titles:
+                    used_titles.add(candidate)
+                    return candidate
+                suffix += 1
+
+        try:
             wb = openpyxl.Workbook()
             wb.remove(wb.active)
-            log_ws = wb.create_sheet("Game Log")
-            summary_ws = wb.create_sheet("Match Summary")
 
             # Styles
             header_font = Font(bold=True, color="FFFFFF")
@@ -87,347 +120,315 @@ class GameMainExportMixin:
             summary_title_font = Font(bold=True, size=14, color="FFFFFF")
             summary_title_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
 
-            # === GAME LOG SHEET ===
-            column_widths = [5, 25, 8, 8, 6, 10, 10, 12, 10, 15, 12, 8, 8, 10, 15, 12, 12, 10]
-            for i, width in enumerate(column_widths, 1):
-                log_ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = width
+            # Process oldest -> newest.
+            ordered_logs = []
+            for log_tuple in reversed(self.game_log):
+                if len(log_tuple) == 3:
+                    text, _color, time_elapsed = log_tuple
+                else:
+                    text, _color = log_tuple
+                    time_elapsed = 0.0
+                ordered_logs.append((text, float(time_elapsed)))
 
+            matches_data: dict[int, dict] = {}
+            current_match = 1
+            current_round = 1
+
+            def get_or_create_match(match_no: int) -> dict:
+                if match_no not in matches_data:
+                    matches_data[match_no] = {
+                        "rows": [],
+                        "winner": "Unknown",
+                        "p1_rounds": 0,
+                        "p2_rounds": 0,
+                        "duration": 0.0,
+                        "damage_t1": 0,
+                        "damage_t2": 0,
+                        "kills_t1": 0,
+                        "kills_t2": 0,
+                        "obj_t1": 0,
+                        "obj_t2": 0,
+                        "map_label": "Unknown",
+                    }
+                return matches_data[match_no]
+
+            for log_entry, time_elapsed in ordered_logs:
+                if "Match" in log_entry and "starts" in log_entry:
+                    parsed_match = parse_match_number(log_entry)
+                    if parsed_match is not None:
+                        current_match = parsed_match
+                    current_round = 1
+                    match_data = get_or_create_match(current_match)
+                    if "Map:" in log_entry:
+                        try:
+                            map_piece = log_entry.split("Map:", 1)[1]
+                            map_label = map_piece.split("P1:", 1)[0].strip()
+                            if map_label:
+                                match_data["map_label"] = map_label
+                        except Exception:
+                            pass
+
+                if "Round" in log_entry and "begins" in log_entry:
+                    parsed_round = parse_round_number(log_entry)
+                    if parsed_round is not None:
+                        current_round = parsed_round
+
+                if "Round" in log_entry and "ends" in log_entry:
+                    parsed_round = parse_round_number(log_entry)
+                    if parsed_round is not None:
+                        current_round = parsed_round
+
+                match_data = get_or_create_match(current_match)
+
+                # Defaults for row columns
+                scenario = log_entry
+                team = 0
+                health = 0
+                position = ""
+                event = "log"
+                action_name = ""
+                target_position = ""
+                damage = 0
+                heal = 0
+                movement = ""
+                target = ""
+                target_health_before = ""
+                target_health_after = ""
+                target_team = ""
+
+                # Track per-match objective control summary from series log lines
+                if "SUMMARY : Team 1 Objective Control" in log_entry:
+                    try:
+                        match_data["obj_t1"] = safe_int(log_entry.split("=")[1].split("ticks")[0].strip())
+                    except Exception:
+                        pass
+                elif "SUMMARY : Team 2 Objective Control" in log_entry:
+                    try:
+                        match_data["obj_t2"] = safe_int(log_entry.split("=")[1].split("ticks")[0].strip())
+                    except Exception:
+                        pass
+
+                # Parse special summary lines
+                if log_entry.startswith("SUMMARY : Result"):
+                    event = "summary"
+                    if "Winner: P1" in log_entry:
+                        match_data["winner"] = "P1"
+                    elif "Winner: P2" in log_entry:
+                        match_data["winner"] = "P2"
+                    try:
+                        pieces = log_entry.split("P1 rounds = ", 1)[1]
+                        p1_part, p2_part = pieces.split("P2 rounds = ", 1)
+                        match_data["p1_rounds"] = safe_int(p1_part.strip())
+                        match_data["p2_rounds"] = safe_int(p2_part.strip())
+                    except Exception:
+                        pass
+                    match_data["duration"] = max(match_data["duration"], time_elapsed)
+
+                elif "Match" in log_entry and "over" in log_entry and "win" in log_entry:
+                    event = "match_over"
+                    parsed_match = parse_match_number(log_entry)
+                    if parsed_match is not None:
+                        current_match = parsed_match
+                        match_data = get_or_create_match(current_match)
+                    if "P1 win" in log_entry:
+                        match_data["winner"] = "P1"
+                    elif "P2 win" in log_entry:
+                        match_data["winner"] = "P2"
+                    match_data["duration"] = max(match_data["duration"], time_elapsed)
+
+                elif " attacks " in log_entry and " with \"" in log_entry:
+                    event = "attack"
+                    attacker = log_entry.split(" attacks ")[0].strip()
+                    scenario = log_entry
+                    if "(T1)" in log_entry:
+                        team = 1
+                    elif "(T2)" in log_entry:
+                        team = 2
+
+                    if " attacks " in log_entry and " with \"" in log_entry:
+                        left, right = log_entry.split(" attacks ", 1)
+                        target = right.split(" with \"", 1)[0].strip()
+                        action_name = right.split(" with \"", 1)[1].split("\"", 1)[0]
+
+                    if "hit for" in log_entry:
+                        try:
+                            dmg_text = log_entry.split("hit for ", 1)[1].split(" ", 1)[0]
+                            damage = safe_int(dmg_text)
+                            if team == 1:
+                                match_data["damage_t1"] += damage
+                            elif team == 2:
+                                match_data["damage_t2"] += damage
+                        except Exception:
+                            pass
+
+                    if "(HP before:" in log_entry:
+                        try:
+                            hp_piece = log_entry.split("(HP before:", 1)[1].split(")", 1)[0]
+                            hp_before_text, hp_after_text = hp_piece.split(", after:")
+                            target_health_before = safe_int(hp_before_text.strip())
+                            target_health_after = safe_int(hp_after_text.strip().split("/")[0])
+                        except Exception:
+                            pass
+
+                    if " at " in log_entry:
+                        target_position = log_entry.rsplit(" at ", 1)[1].strip()
+
+                    unit_name = attacker.split(" (", 1)[0]
+                    for chara in Character.team1_list + Character.team2_list:
+                        if chara.template.get("display_name", "") == unit_name:
+                            health = chara.template.get("curHP", 0)
+                            position = f"{chara.grid[0]},{chara.grid[1]}"
+                            break
+
+                elif " uses \"" in log_entry and " - +" in log_entry:
+                    event = "heal"
+                    unit_name = log_entry.split(" uses \"", 1)[0]
+                    if "(T1)" in log_entry:
+                        team = 1
+                    elif "(T2)" in log_entry:
+                        team = 2
+                    try:
+                        action_name = log_entry.split(" uses \"", 1)[1].split("\"", 1)[0]
+                        target = log_entry.split("\" on ", 1)[1].split(" - +", 1)[0].strip()
+                        heal = safe_int(log_entry.split(" - +", 1)[1].split(" ", 1)[0])
+                    except Exception:
+                        pass
+
+                    for chara in Character.team1_list + Character.team2_list:
+                        if chara.template.get("display_name", "") == unit_name:
+                            health = chara.template.get("curHP", 0)
+                            position = f"{chara.grid[0]},{chara.grid[1]}"
+                            break
+
+                elif " is KO" in log_entry:
+                    event = "kill"
+                    target = log_entry.split(" is KO", 1)[0]
+                    if "(T1)" in log_entry:
+                        team = 1
+                    elif "(T2)" in log_entry:
+                        team = 2
+                    if team == 1:
+                        match_data["kills_t2"] += 1
+                    elif team == 2:
+                        match_data["kills_t1"] += 1
+
+                elif "Pass turn" in log_entry:
+                    event = "pass"
+                    scenario = log_entry
+
+                match_data["rows"].append({
+                    "scenario": scenario,
+                    "match": current_match,
+                    "round": current_round,
+                    "team": team,
+                    "time_elapsed": time_elapsed,
+                    "health": health,
+                    "position": position,
+                    "event": event,
+                    "action_name": action_name,
+                    "target_position": target_position,
+                    "damage": damage,
+                    "heal": heal,
+                    "movement": movement,
+                    "target": target,
+                    "target_health_before": target_health_before,
+                    "target_health_after": target_health_after,
+                    "target_team": target_team,
+                })
+
+            if not matches_data:
+                print("No game log data to export.")
+                return
+
+            # Create 2 sheets per match in order.
+            column_widths = [5, 35, 8, 8, 6, 14, 10, 16, 12, 15, 12, 8, 8, 10, 18, 18, 18, 10]
+            used_titles: set[str] = set()
             headers = [
                 "No.", "Scenario", "Match", "Round", "Team", "Time (seconds)",
                 "Health", "Position (Row, Col)", "Event", "Action name",
                 "Target Position", "Damage", "Heal", "Movement",
                 "Target", "Target Health before", "Target Health after", "Target Team"
             ]
-            for col, header in enumerate(headers, 1):
-                cell = log_ws.cell(row=1, column=col, value=header)
-                cell.font = header_font
-                cell.fill = header_fill
-                cell.alignment = header_alignment
-                cell.border = thin_border
 
-            # Initialize tracking
-            current_match = 1
-            current_round = 1
-            team1_damage_given = 0
-            team2_damage_given = 0
-            team1_kills = 0
-            team2_kills = 0
-            kill_details = []
-            row = 2
-            step = 1
+            for match_no in sorted(matches_data.keys()):
+                match_data = matches_data[match_no]
 
-            # --- NEW: Find the last match number and its final round ---
-            last_match_num = 0
-            last_round_num = 0
-            for log_tuple in reversed(self.game_log):
-                if len(log_tuple) == 3:
-                    log_entry, color, time_elapsed = log_tuple
-                else:
-                    log_entry, color = log_tuple
-                    time_elapsed = 0.0 # Process oldest first
-                if "Match" in log_entry and "starts" in log_entry:
-                    try:
-                        match_num = int(log_entry.split("Match ")[1].split()[0])
-                        last_match_num = max(last_match_num, match_num)
-                    except:
-                        pass
-                elif "Round" in log_entry and "begins" in log_entry:
-                    try:
-                        round_num = int(log_entry.split("Round ")[1].split()[0])
-                        # Only update if this round belongs to the last match
-                        if last_match_num > 0: # Ensure we have a valid last match
-                            last_round_num = max(last_round_num, round_num)
-                    except:
-                        pass
+                # Mx: Game Log
+                log_ws = wb.create_sheet(make_sheet_title(f"M{match_no}: Game Log", used_titles))
+                for i, width in enumerate(column_widths, 1):
+                    log_ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = width
+                for col, header in enumerate(headers, 1):
+                    cell = log_ws.cell(row=1, column=col, value=header)
+                    cell.font = header_font
+                    cell.fill = header_fill
+                    cell.alignment = header_alignment
+                    cell.border = thin_border
 
-            # --- NEW: Flag to indicate we've passed the end of the last match's final round ---
-            reached_final_round_end = False
+                for idx, row_data in enumerate(match_data["rows"], start=2):
+                    log_ws.cell(row=idx, column=1, value=idx - 1).border = thin_border
+                    log_ws.cell(row=idx, column=2, value=row_data["scenario"]).border = thin_border
+                    log_ws.cell(row=idx, column=3, value=row_data["match"]).border = thin_border
+                    log_ws.cell(row=idx, column=4, value=row_data["round"]).border = thin_border
+                    log_ws.cell(row=idx, column=5, value=row_data["team"]).border = thin_border
+                    log_ws.cell(row=idx, column=6, value=row_data["time_elapsed"]).border = thin_border
+                    log_ws.cell(row=idx, column=7, value=row_data["health"]).border = thin_border
+                    log_ws.cell(row=idx, column=8, value=row_data["position"]).border = thin_border
+                    log_ws.cell(row=idx, column=9, value=row_data["event"]).border = thin_border
+                    log_ws.cell(row=idx, column=10, value=row_data["action_name"]).border = thin_border
+                    log_ws.cell(row=idx, column=11, value=row_data["target_position"]).border = thin_border
+                    log_ws.cell(row=idx, column=12, value=row_data["damage"]).border = thin_border
+                    log_ws.cell(row=idx, column=13, value=row_data["heal"]).border = thin_border
+                    log_ws.cell(row=idx, column=14, value=row_data["movement"]).border = thin_border
+                    log_ws.cell(row=idx, column=15, value=row_data["target"]).border = thin_border
+                    log_ws.cell(row=idx, column=16, value=row_data["target_health_before"]).border = thin_border
+                    log_ws.cell(row=idx, column=17, value=row_data["target_health_after"]).border = thin_border
+                    log_ws.cell(row=idx, column=18, value=row_data["target_team"]).border = thin_border
 
-            # Process log from OLDEST to NEWEST (reverse because log is newest-first)
-            for log_tuple in reversed(self.game_log):
-                # Unpack: (text, color, time_elapsed)
-                if len(log_tuple) == 3:
-                    log_entry, color, time_elapsed = log_tuple
-                else:
-                    # Fallback for old-style logs (if any)
-                    log_entry, color = log_tuple
-                    time_elapsed = 0.0
-                # --- NEW: Check if we've already passed the final round end ---
-                if reached_final_round_end:
-                    # Skip this entry for the Game Log sheet
-                    continue
+                # Mx: Match Summary
+                summary_ws = wb.create_sheet(make_sheet_title(f"M{match_no}: Match Summary", used_titles))
+                summary_ws.column_dimensions['A'].width = 35
+                summary_ws.column_dimensions['B'].width = 30
+                title_cell = summary_ws.cell(1, 1, f"M{match_no} Match Summary")
+                title_cell.font = summary_title_font
+                title_cell.fill = summary_title_fill
+                summary_ws.merge_cells('A1:B1')
 
-                if "Match" in log_entry and "starts" in log_entry:
-                    try:
-                        current_match = int(log_entry.split("Match ")[1].split()[0])
-                    except:
-                        pass
-                    continue
-                elif "Round" in log_entry and "begins" in log_entry:
-                    try:
-                        current_round = int(log_entry.split("Round ")[1].split()[0])
-                    except:
-                        pass
-                    continue
-                # --- NEW: Also skip summary events ---
-                elif "Match over" in log_entry or "SUMMARY" in log_entry or \
-                     "SERIES OVER" in log_entry or "WINNER" in log_entry or \
-                     "Total matches played" in log_entry:
-                    # We'll handle the "round_end" for the final round separately.
-                    continue
-
-                parts = log_entry.split(" : ", 1)
-                if len(parts) < 2:
-                    continue
-                tag = parts[0]
-                message = parts[1]
-                team = 1 if tag == "P1" else (2 if tag == "P2" else "")
-                event = ""
-                action_name = ""
-                unit_name = ""
-                target = ""
-                position = ""
-                target_position = ""
-                damage = ""
-                heal = ""
-                movement = ""
-                health = "" # Initialize to empty
-                target_health_before = ""
-                target_health_after = ""
-                target_team = ""
-                scenario = message
-
-                # --- Parse events ---
-                if "moves" in message:
-                    event = "move"
-                    if " moves " in message:
-                        a, b = message.split(" moves ", 1)
-                        unit_name = a
-                        if " -> " in b and " (" in b:
-                            pos_part, dist_part = b.rsplit(" (", 1)
-                            start_pos, end_pos = pos_part.split(" -> ", 1)
-                            movement = safe_int(dist_part.replace(" tiles)", ""))
-                            position = end_pos
-                            scenario = f"{unit_name} moves ({start_pos} -> {end_pos})"
-                    # --- GET HEALTH FOR MOVE EVENT FROM PREV STATE ---
-                    # Use the _char_snapshots (prev_state) to get health at start of turn
-                    for chara in Character.team1_list + Character.team2_list:
-                        if chara.template.get("display_name", "") == unit_name:
-                            # Try to find the character's state at the beginning of the turn
-                            prev_char_data = self._char_snapshots.get(chara.id)
-                            if prev_char_data:
-                                health = prev_char_data.get("hp", 0)
-                            else:
-                                # Fallback: use current health if snapshot not available
-                                health = chara.template.get("curHP", 0)
-                            break
-                elif "attacks" in message and "(HP before:" in message:
-                    event = "attack"
-                    if " attacks " in message and " with \"" in message and " - hit for " in message:
-                        a, rest = message.split(" attacks ", 1)
-                        unit_name = a
-                        if " with \"" in rest:
-                            target_part, action_rest = rest.split(" with \"", 1)
-                            target = target_part
-                            if "\" - hit for " in action_rest:
-                                action_name, result = action_rest.split("\" - hit for ", 1)
-                                if "(HP before: " in result:
-                                    # Parse: "6 (HP before: 4, after: 4/22) at E5"
-                                    parts = result.split(" at ")
-                                    main_part = parts[0]
-                                    target_position = parts[1] if len(parts) > 1 else ""  # Extract target position
-                                    # Now parse the main part for damage and HP
-                                    dmg_str = main_part.split(" (HP before: ")[0]
-                                    hp_part = main_part.split("(HP before: ")[1].split(")")[0]  # "4, after: 4/22"
-                                    hp_before_str, hp_after_str = hp_part.split(", after: ")
-                                    damage = safe_int(dmg_str)
-                                    target_health_before = safe_int(hp_before_str)
-                                    # Calculate actual HP after damage (clamp to 0)
-                                    target_health_after = max(0, target_health_before - damage)
-                                    if team == 1:
-                                        team1_damage_given += damage
-                                    elif team == 2:
-                                        team2_damage_given += damage
-                                    scenario = f"{unit_name} attacks {target} with {action_name}"
-                                    target_team = 2 if team == 1 else 1
-                    # --- GET HEALTH FOR ATTACK EVENT FROM PREV STATE ---
-                    for chara in Character.team1_list + Character.team2_list:
-                        if chara.template.get("display_name", "") == unit_name:
-                            prev_char_data = self._char_snapshots.get(chara.id)
-                            if prev_char_data:
-                                health = prev_char_data.get("hp", 0)
-                            else:
-                                health = chara.template.get("curHP", 0)
-                            break
-                elif "uses" in message and "heal" in message:
-                    event = "heal"
-                    if " uses \"" in message and " on " in message and " - +" in message:
-                        a, rest = message.split(" uses \"", 1)
-                        unit_name = a
-                        if "\" on " in rest:
-                            action_part, target_rest = rest.split("\" on ", 1)
-                            action_name = action_part
-                            if " - +" in target_rest:
-                                target_part, hp_part = target_rest.split(" - +", 1)
-                                target = target_part
-                                if " (HP " in hp_part:
-                                    heal_str, hp_str = hp_part.split(" (HP ", 1)
-                                    heal = safe_int(heal_str)
-                                    hp_cur, hp_max = hp_str.replace(")", "").split("/", 1)
-                                    target_health_after = safe_int(hp_cur)
-                                    target_health_before = target_health_after - heal
-                                    target_team = team
-                                    scenario = f"{unit_name} heals {target} with {action_name}"
-                    # --- GET HEALTH FOR HEAL EVENT FROM PREV STATE ---
-                    for chara in Character.team1_list + Character.team2_list:
-                        if chara.template.get("display_name", "") == unit_name:
-                            prev_char_data = self._char_snapshots.get(chara.id)
-                            if prev_char_data:
-                                health = prev_char_data.get("hp", 0)
-                            else:
-                                health = chara.template.get("curHP", 0)
-                            break
-                elif "is KO" in message:
-                    event = "kill"
-                    unit_name = message.split(" is KO")[0]
-                    if "(HP 0/" in message:
-                        hp_max = safe_int(message.split("(HP 0/")[1].split(")")[0])
-                        target_health_before = hp_max
-                        target_health_after = 0
-                        damage = hp_max
-                        if team == 1:
-                            team1_damage_given += damage
-                            team1_kills += 1
-                        elif team == 2:
-                            team2_damage_given += damage
-                            team2_kills += 1
-                        # Extract killer if possible
-                        if "by " in message:
-                            killer = message.split("by ")[1].split(" using")[0]
-                            kill_details.append(f"In Match {current_match} - Round {current_round}, {killer} killed {unit_name}")
-                    target = unit_name
-                    target_team = team
-                    scenario = f"{unit_name} is KO"
-                    # --- SET HEALTH TO 0 FOR KO EVENT ---
-                    health = 0
-                elif "Pass turn" in message:
-                    event = "pass"
-                    unit_name = f"T{team}"
-                    scenario = f"{unit_name} passes turn"
-                    # --- GET HEALTH FOR PASS EVENT FROM PREV STATE ---
-                    # For pass events, we don't have a specific unit name, so we leave health as 0.
-                    # You could enhance this by tracking the last active unit per team.
-                    health = 0
-
-                # --- NEW: Check for "round_end" event for the last match and round ---
-                if "Round" in log_entry and "ends" in log_entry:
-                    try:
-                        round_num = int(log_entry.split("Round ")[1].split()[0])
-                        # Check if this is the end of the final round of the last match
-                        if current_match == last_match_num and round_num == last_round_num:
-                            # This is the end of the last match's final round.
-                            # Mark that we've reached it.
-                            reached_final_round_end = True
-                            # We still want to include this "round_end" line in the log.
-                            # So, we don't continue here; we process it.
-                    except:
-                        pass
-
-                # Write row
-                log_ws.cell(row=row, column=1, value=step).border = thin_border
-                log_ws.cell(row=row, column=2, value=scenario).border = thin_border
-                log_ws.cell(row=row, column=3, value=current_match).border = thin_border
-                log_ws.cell(row=row, column=4, value=current_round).border = thin_border
-                log_ws.cell(row=row, column=5, value=team).border = thin_border
-                log_ws.cell(row=row, column=6, value=time_elapsed).border = thin_border    # Time placeholder
-                log_ws.cell(row=row, column=7, value=health).border = thin_border  # ✅ This will now have the correct value
-                log_ws.cell(row=row, column=8, value=position).border = thin_border
-                log_ws.cell(row=row, column=9, value=event).border = thin_border
-                log_ws.cell(row=row, column=10, value=action_name).border = thin_border
-                log_ws.cell(row=row, column=11, value=target_position).border = thin_border
-                log_ws.cell(row=row, column=12, value=damage).border = thin_border
-                log_ws.cell(row=row, column=13, value=heal).border = thin_border
-                log_ws.cell(row=row, column=14, value=movement).border = thin_border
-                log_ws.cell(row=row, column=15, value=target).border = thin_border
-                log_ws.cell(row=row, column=16, value=target_health_before).border = thin_border
-                log_ws.cell(row=row, column=17, value=target_health_after).border = thin_border
-                log_ws.cell(row=row, column=18, value=target_team).border = thin_border
-                step += 1
+                row = 2
+                summary_ws.cell(row, 1, "Map").font = Font(bold=True)
+                summary_ws.cell(row, 2, match_data["map_label"])
+                row += 1
+                summary_ws.cell(row, 1, "Winner").font = Font(bold=True)
+                summary_ws.cell(row, 2, match_data["winner"])
+                row += 1
+                summary_ws.cell(row, 1, "Rounds (P1-P2)").font = Font(bold=True)
+                summary_ws.cell(row, 2, f"{match_data['p1_rounds']}-{match_data['p2_rounds']}")
+                row += 1
+                summary_ws.cell(row, 1, "Duration (seconds)").font = Font(bold=True)
+                summary_ws.cell(row, 2, f"{match_data['duration']:.2f}")
+                row += 1
+                summary_ws.cell(row, 1, "Damage Dealt Team 1").font = Font(bold=True)
+                summary_ws.cell(row, 2, match_data["damage_t1"])
+                row += 1
+                summary_ws.cell(row, 1, "Damage Dealt Team 2").font = Font(bold=True)
+                summary_ws.cell(row, 2, match_data["damage_t2"])
+                row += 1
+                summary_ws.cell(row, 1, "Kills by Team 1").font = Font(bold=True)
+                summary_ws.cell(row, 2, match_data["kills_t1"])
+                row += 1
+                summary_ws.cell(row, 1, "Kills by Team 2").font = Font(bold=True)
+                summary_ws.cell(row, 2, match_data["kills_t2"])
                 row += 1
 
-            # === MATCH SUMMARY SHEET ===
-            summary_ws.column_dimensions['A'].width = 25
-            summary_ws.column_dimensions['B'].width = 35
-            title_cell = summary_ws.cell(1, 1, "Match Summary")
-            title_cell.font = summary_title_font
-            title_cell.fill = summary_title_fill
-            summary_ws.merge_cells('A1:B1')
-            row = 2
-            winner = "Team 1" if self.total_p1_win > self.total_p2_win else "Team 2"
-            summary_ws.cell(row, 1, f"Winner: {winner}").font = Font(bold=True)
-            row += 1
-            # Total Matches Played
-            total_matches_played = max(0, self.currentMatch - 1)
-            summary_ws.cell(row, 1, f"Total Matches Played: {total_matches_played}").font = Font(bold=True)
-            row += 1
-            # Add Total Match Time
-            summary_ws.cell(row, 1, f"Total Match Time (seconds): {self.last_match_duration:.2f}").font = Font(bold=True)
-            row += 1
-            # Add Win Rates
-            team1_win_rate = (self.total_p1_win / total_matches_played * 100) if total_matches_played > 0 else 0.0
-            team2_win_rate = (self.total_p2_win / total_matches_played * 100) if total_matches_played > 0 else 0.0
-            summary_ws.cell(row, 1, f"Team 1 Win Rate: {team1_win_rate:.2f}%").font = Font(bold=True)
-            row += 1
-            summary_ws.cell(row, 1, f"Team 2 Win Rate: {team2_win_rate:.2f}%").font = Font(bold=True)
-            row += 1
-            summary_ws.cell(row, 1, f"Team 1 Wins: {self.total_p1_win}").font = Font(bold=True)
-            row += 1
-            summary_ws.cell(row, 1, f"Team 2 Wins: {self.total_p2_win}").font = Font(bold=True)
-            row += 1
-            summary_ws.cell(row, 1, "Damage Dealt:").font = Font(bold=True)
-            row += 1
-            summary_ws.cell(row, 1, "- Team 1:"); summary_ws.cell(row, 2, f"{team1_damage_given}")
-            row += 1
-            summary_ws.cell(row, 1, "- Team 2:"); summary_ws.cell(row, 2, f"{team2_damage_given}")
-            row += 1
-            summary_ws.cell(row, 1, "Kills:").font = Font(bold=True)
-            row += 1
-            summary_ws.cell(row, 1, "- Team 1:"); summary_ws.cell(row, 2, f"{team1_kills}")
-            row += 1
-            summary_ws.cell(row, 1, "- Team 2:"); summary_ws.cell(row, 2, f"{team2_kills}")
-            row += 1
-            if kill_details:
-                summary_ws.cell(row, 1, "Kill Details:").font = Font(bold=True)
+                total_obj = match_data["obj_t1"] + match_data["obj_t2"]
+                t1_pct = (match_data["obj_t1"] / total_obj * 100) if total_obj else 0.0
+                t2_pct = (match_data["obj_t2"] / total_obj * 100) if total_obj else 0.0
+                summary_ws.cell(row, 1, "Objective Control Team 1").font = Font(bold=True)
+                summary_ws.cell(row, 2, f"{match_data['obj_t1']} ({t1_pct:.2f}%)")
                 row += 1
-                for detail in kill_details:
-                    summary_ws.cell(row, 1, detail)
-                    row += 1
-                    
-            # ------------------------------------------------
-            # ⭐ ADD OBJECTIVE CONTROL BELOW KILL DETAILS ⭐
-            # ------------------------------------------------
-            row += 1  # One empty line for spacing
+                summary_ws.cell(row, 1, "Objective Control Team 2").font = Font(bold=True)
+                summary_ws.cell(row, 2, f"{match_data['obj_t2']} ({t2_pct:.2f}%)")
 
-            summary_ws.cell(row, 1, "Objective Control:").font = Font(bold=True)
-            row += 1
-
-            team1_obj = self.obj_control_team1
-            team2_obj = self.obj_control_team2
-            total_obj = team1_obj + team2_obj
-
-            team1_obj_pct = (team1_obj / total_obj * 100) if total_obj > 0 else 0
-            team2_obj_pct = (team2_obj / total_obj * 100) if total_obj > 0 else 0
-
-            summary_ws.cell(row, 1, f"- Team 1 control ticks: {team1_obj}")
-            row += 1
-            summary_ws.cell(row, 1, f"- Team 2 control ticks: {team2_obj}")
-            row += 1
-            summary_ws.cell(row, 1, f"- Team 1 Control %: {team1_obj_pct:.2f}%")
-            row += 1
-            summary_ws.cell(row, 1, f"- Team 2 Control %: {team2_obj_pct:.2f}%")
-            row += 1
-
-            # Save
+            # Save one workbook with all per-match sheets.
             export_dir = "exports"
             os.makedirs(export_dir, exist_ok=True)
             filename = f"{export_dir}/game_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"

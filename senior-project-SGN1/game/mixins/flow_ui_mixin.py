@@ -367,6 +367,7 @@ class GameMainFlowUiMixin:
 
     def screen1init(self):
 
+        self.game_limit = max(self._game_limit_min, min(self._game_limit_max, self.game_limit))
         self.match_limit = max(self._match_limit_min, min(self._match_limit_max, self.match_limit))
 
         AI_types = ('Player Input', 'Perfect Play AI', 'Random AI', 'Personality Cores AI', 'Disable AI') # not 'Independent Action AI' anymore
@@ -416,8 +417,8 @@ class GameMainFlowUiMixin:
         ai1_name = self._get_ai_label(self.team1_ID)
         ai2_name = self._get_ai_label(self.team2_ID)
 
-        if self.isAuto and self.currentMatch > self.match_limit:
-            print("Auto mode completed after " + str(self.match_limit) + " matches.")
+        if self.isAuto and self.currentMatch > self.game_limit:
+            print("Auto mode completed after " + str(self.game_limit) + " matches.")
             print("Player 1: " + str(self.total_p1_win) + " wins")
             print("Player 2: " + str(self.total_p2_win) + " wins")
             if self.total_p1_win > self.total_p2_win:
