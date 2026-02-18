@@ -72,7 +72,6 @@ class GameMainInitMixin:
         self.game_screen = -1
         # -1 = Start Screen
         # 0 = AI Selection Screen
-        # 0.5 = Balance Tweaking Screen
         # 1 = Game Screen
 
         # Load background image
@@ -118,12 +117,38 @@ class GameMainInitMixin:
         self._model_btn_p2 = pygame.Rect(630, 590, 260, 40)
         self._start_button_rect = pygame.Rect(WIDTH // 2 - 130, 740, 260, 64)
 
-        # Balance tweaking screen widgets
-        self._balance_page_start_button_rect = pygame.Rect(WIDTH // 2 - 110, 840, 220, 60)
-        self._balance_page_start_hovered = False
+        # Settings popup (inside AI selection screen)
+        self._settings_button_rect = pygame.Rect(WIDTH - 190, 22, 150, 52)
+        self._settings_button_hovered = False
+        self._settings_popup_open = False
+        self._settings_popup_page = 'main'  # 'main' | 'balance'
+        settings_popup_w, settings_popup_h = 1063, 907
+        settings_popup_x = (WIDTH - settings_popup_w) // 2
+        settings_popup_y = (HEIGHT - settings_popup_h) // 2
+        self._settings_popup_rect = pygame.Rect(settings_popup_x, settings_popup_y, settings_popup_w, settings_popup_h)
+
+        self._settings_main_balance_button_rect = pygame.Rect(
+            self._settings_popup_rect.x + 140,
+            self._settings_popup_rect.y + 210,
+            self._settings_popup_rect.width - 280,
+            92,
+        )
+        self._settings_sub_back_rect = pygame.Rect(
+            self._settings_popup_rect.x + 44,
+            self._settings_popup_rect.y + 34,
+            130,
+            50,
+        )
+        self._settings_close_rect = pygame.Rect(
+            self._settings_popup_rect.right - 92,
+            self._settings_popup_rect.y + 24,
+            48,
+            48,
+        )
+
         self._balance_option_labels = [
-            'New stats',
-            'New stats +\nWeakness system',
+            'Passive and skill after effect',
+            'Passive and skill after effect + Weakness system',
             'Weakness system',
         ]
         self._balance_option_colors = [
@@ -131,14 +156,18 @@ class GameMainInitMixin:
             (66, 66, 245),
             (66, 66, 245),
         ]
-        self._balance_option_states = [False, False, False]
+        self._balance_option_states = [True, False, False]
+        self._balance_option_row_rects = [
+            pygame.Rect(self._settings_popup_rect.x + 140, self._settings_popup_rect.y + 205, self._settings_popup_rect.width - 280, 92),
+            pygame.Rect(self._settings_popup_rect.x + 140, self._settings_popup_rect.y + 330, self._settings_popup_rect.width - 280, 92),
+            pygame.Rect(self._settings_popup_rect.x + 140, self._settings_popup_rect.y + 455, self._settings_popup_rect.width - 280, 92),
+        ]
         self._balance_checkbox_rects = [
-            pygame.Rect(370, 355, 24, 24),
-            pygame.Rect(553, 452, 24, 24),
-            pygame.Rect(553, 550, 24, 24),
+            pygame.Rect(self._balance_option_row_rects[0].x + 18, self._balance_option_row_rects[0].y + 31, 30, 30),
+            pygame.Rect(self._balance_option_row_rects[1].x + 18, self._balance_option_row_rects[1].y + 31, 30, 30),
+            pygame.Rect(self._balance_option_row_rects[2].x + 18, self._balance_option_row_rects[2].y + 31, 30, 30),
         ]
         self._balance_keyboard_index = 0
-
 
         self.game_state = 'selecting start area'
 

@@ -120,10 +120,56 @@ class GameMainUpdateMixin:
                         continue
                     if event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION, pygame.KEYDOWN):
                         continue
+
+                if self._settings_popup_open:
+                    if event.type == pygame.KEYDOWN:
+                        if event.key == pygame.K_ESCAPE:
+                            self._settings_popup_open = False
+                            self._settings_popup_page = 'main'
+                            continue
+                        if self._settings_popup_page == 'balance':
+                            if event.key in (pygame.K_UP, pygame.K_DOWN):
+                                if event.key == pygame.K_UP:
+                                    self._balance_keyboard_index = (self._balance_keyboard_index - 1) % len(self._balance_option_row_rects)
+                                else:
+                                    self._balance_keyboard_index = (self._balance_keyboard_index + 1) % len(self._balance_option_row_rects)
+                                continue
+                            if event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_z, pygame.K_x):
+                                self._balance_option_states = [i == self._balance_keyboard_index for i in range(len(self._balance_option_states))]
+                                continue
+
+                    if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                        if self._settings_close_rect.collidepoint(event.pos):
+                            self._settings_popup_open = False
+                            self._settings_popup_page = 'main'
+                            continue
+                        if not self._settings_popup_rect.collidepoint(event.pos):
+                            self._settings_popup_open = False
+                            self._settings_popup_page = 'main'
+                            continue
+
+                        if self._settings_popup_page == 'main':
+                            if self._settings_main_balance_button_rect.collidepoint(event.pos):
+                                self._settings_popup_page = 'balance'
+                            continue
+
+                        if self._settings_sub_back_rect.collidepoint(event.pos):
+                            self._settings_popup_page = 'main'
+                            continue
+
+                        for idx, row_rect in enumerate(self._balance_option_row_rects):
+                            if row_rect.collidepoint(event.pos):
+                                self._balance_option_states = [i == idx for i in range(len(self._balance_option_states))]
+                                self._balance_keyboard_index = idx
+                                break
+                        continue
+                    if event.type in (pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION, pygame.MOUSEWHEEL):
+                        continue
+
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_RETURN:
                         if self.p1_sel_cursor.show and self.p2_sel_cursor.show:
-                            self.game_screen = 0.5
+                            self.screen1init()
             # ESC exits the app on AI-select page
                     if event.key == pygame.K_ESCAPE:
                         pygame.quit()
@@ -164,7 +210,14 @@ class GameMainUpdateMixin:
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     if event.button == 1:
                         if self._start_button_rect.collidepoint(event.pos) and self.p1_sel_cursor.show and self.p2_sel_cursor.show:
-                            self.game_screen = 0.5
+                            self.screen1init()
+                            continue
+                        if self._settings_button_rect.collidepoint(event.pos):
+                            self._settings_popup_open = not self._settings_popup_open
+                            self._settings_popup_page = 'main'
+                            # cancel any active dragging when opening settings
+                            self._match_limit_slider_dragging = False
+                            self._game_limit_slider_dragging = False
                             continue
                         if (self._map_select_button_rect.collidepoint(event.pos) or self._map_preview_thumb_rect.collidepoint(event.pos)):
                             self._map_popup_open = True
@@ -252,58 +305,6 @@ class GameMainUpdateMixin:
                         self._model_scroll_offset -= event.y
                         self._model_scroll_offset = max(0, min(self._model_scroll_offset, self._model_max_offset()))
 
-
-        elif self.game_screen == 0.5:
-            mouse_pos = pygame.mouse.get_pos()
-            self._balance_page_start_hovered = self._balance_page_start_button_rect.collidepoint(mouse_pos)
-
-            # Keep this page in strict single-select mode.
-            selected_indices = [i for i, checked in enumerate(self._balance_option_states) if checked]
-            if len(selected_indices) > 1:
-                keep_idx = selected_indices[0]
-                self._balance_option_states = [i == keep_idx for i in range(len(self._balance_option_states))]
-
-            for event in events:
-                if event.type == pygame.QUIT:
-                    pygame.quit()
-                    sys.exit()
-
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
-                        self.screen1init()
-                    elif event.key == pygame.K_ESCAPE:
-                        self.game_screen = 0
-                    elif event.key == pygame.K_UP:
-                        self._balance_keyboard_index = (self._balance_keyboard_index - 1) % len(self._balance_checkbox_rects)
-                    elif event.key == pygame.K_DOWN:
-                        self._balance_keyboard_index = (self._balance_keyboard_index + 1) % len(self._balance_checkbox_rects)
-                    elif event.key == pygame.K_z:
-                        active_idx = next((i for i, checked in enumerate(self._balance_option_states) if checked), None)
-                        if active_idx is None:
-                            self._balance_option_states = [i == self._balance_keyboard_index for i in range(len(self._balance_option_states))]
-                        elif active_idx == self._balance_keyboard_index:
-                            # keep selected as-is
-                            pass
-                        # else: another option is selected, this one remains disabled until unselected with X
-                    elif event.key == pygame.K_x:
-                        if self._balance_option_states[self._balance_keyboard_index]:
-                            self._balance_option_states = [False for _ in self._balance_option_states]
-
-                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    if self._balance_page_start_button_rect.collidepoint(event.pos):
-                        self.screen1init()
-                        continue
-                    active_idx = next((i for i, checked in enumerate(self._balance_option_states) if checked), None)
-                    for idx, checkbox_rect in enumerate(self._balance_checkbox_rects):
-                        if checkbox_rect.collidepoint(event.pos):
-                            if active_idx is None:
-                                # First selection: choose exactly one and disable others.
-                                self._balance_option_states = [i == idx for i in range(len(self._balance_option_states))]
-                            elif idx == active_idx:
-                                # Uncheck selected one: re-enable all.
-                                self._balance_option_states = [False for _ in self._balance_option_states]
-                            # else: another option is active -> this one is disabled/unclickable
-                            break
 
         elif self.game_screen == 1:
             self.cumulative_time += dt

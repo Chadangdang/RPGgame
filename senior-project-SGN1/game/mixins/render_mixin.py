@@ -260,12 +260,12 @@ class GameMainRenderMixin:
             draw_column(True)
             draw_column(False)
 
-            # Next button (goes to balance tweaking screen)
+            # Start button
             start_hovered = self._start_button_rect.collidepoint(pygame.mouse.get_pos())
             start_fill = (255, 255, 255) if not start_hovered else (240, 240, 240)
             pygame.draw.rect(self.screen, start_fill, self._start_button_rect)
             pygame.draw.rect(self.screen, BLACK, self._start_button_rect, 2)
-            start_text = self.font_sm.render('NEXT', False, (0, 0, 0))
+            start_text = self.font_sm.render('START', False, (0, 0, 0))
             self.screen.blit(start_text, start_text.get_rect(center=self._start_button_rect.center))
 
             # Bottom-left: Auto and match limit widgets (reuse existing controls)
@@ -325,6 +325,75 @@ class GameMainRenderMixin:
             pygame.draw.rect(self.screen, (0, 0, 0), self._map_select_button_rect, 1)
             map_button_text = self.font_s.render("Map Selection", False, (0, 0, 0))
             self.screen.blit(map_button_text, map_button_text.get_rect(center=self._map_select_button_rect.center))
+            # Settings button (top-right)
+            self._settings_button_hovered = self._settings_button_rect.collidepoint(mouse_pos)
+            settings_fill = (245, 245, 245) if not self._settings_button_hovered else (230, 230, 230)
+            pygame.draw.rect(self.screen, settings_fill, self._settings_button_rect, border_radius=10)
+            pygame.draw.rect(self.screen, (0, 0, 0), self._settings_button_rect, 2, border_radius=10)
+            setting_text = self.font_s.render('Setting', False, (0, 0, 0))
+            self.screen.blit(setting_text, setting_text.get_rect(center=self._settings_button_rect.center))
+
+            if self._settings_popup_open:
+                overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+                overlay.fill((0, 0, 0, 110))
+                self.screen.blit(overlay, (0, 0))
+
+                pygame.draw.rect(self.screen, (247, 242, 234), self._settings_popup_rect)
+                pygame.draw.rect(self.screen, (0, 0, 0), self._settings_popup_rect, 3)
+
+                close_text = self.font_s.render('X', False, (0, 0, 0))
+                self.screen.blit(close_text, close_text.get_rect(center=self._settings_close_rect.center))
+
+                if self._settings_popup_page == 'main':
+                    settings_title = self.font_m.render('Settings', False, (0, 0, 0))
+                    self.screen.blit(settings_title, settings_title.get_rect(center=(self._settings_popup_rect.centerx, self._settings_popup_rect.y + 120)))
+
+                    main_btn_hovered = self._settings_main_balance_button_rect.collidepoint(mouse_pos)
+                    btn_fill = (236, 228, 215) if not main_btn_hovered else (226, 216, 199)
+                    pygame.draw.rect(self.screen, btn_fill, self._settings_main_balance_button_rect, border_radius=10)
+                    pygame.draw.rect(self.screen, (90, 80, 66), self._settings_main_balance_button_rect, 2, border_radius=10)
+                    balance_btn_text = self.font_sm.render('Balance Tweaking', False, (0, 0, 0))
+                    self.screen.blit(balance_btn_text, balance_btn_text.get_rect(center=self._settings_main_balance_button_rect.center))
+                else:
+                    back_hovered = self._settings_sub_back_rect.collidepoint(mouse_pos)
+                    back_fill = (236, 236, 236) if not back_hovered else (223, 223, 223)
+                    pygame.draw.rect(self.screen, back_fill, self._settings_sub_back_rect, border_radius=8)
+                    pygame.draw.rect(self.screen, (60, 60, 60), self._settings_sub_back_rect, 2, border_radius=8)
+                    back_text = self.font_s.render('< Back', False, (0, 0, 0))
+                    self.screen.blit(back_text, back_text.get_rect(center=self._settings_sub_back_rect.center))
+
+                    title = self.font_sm.render('Balance Tweaking', False, (0, 0, 0))
+                    self.screen.blit(title, title.get_rect(center=(self._settings_popup_rect.centerx, self._settings_popup_rect.y + 120)))
+
+                    for idx, row_rect in enumerate(self._balance_option_row_rects):
+                        row_fill = (252, 249, 244)
+                        if idx == self._balance_keyboard_index:
+                            row_fill = (255, 252, 232)
+                        pygame.draw.rect(self.screen, row_fill, row_rect, border_radius=10)
+                        pygame.draw.rect(self.screen, (130, 120, 104), row_rect, 2, border_radius=10)
+
+                        checkbox_rect = self._balance_checkbox_rects[idx]
+                        pygame.draw.rect(self.screen, (250, 250, 250), checkbox_rect, border_radius=4)
+                        pygame.draw.rect(self.screen, (80, 80, 80), checkbox_rect, 2, border_radius=4)
+                        if self._balance_option_states[idx]:
+                            pygame.draw.line(self.screen, (24, 24, 24), (checkbox_rect.left + 6, checkbox_rect.centery), (checkbox_rect.centerx - 1, checkbox_rect.bottom - 6), 4)
+                            pygame.draw.line(self.screen, (24, 24, 24), (checkbox_rect.centerx - 1, checkbox_rect.bottom - 6), (checkbox_rect.right - 6, checkbox_rect.top + 6), 4)
+
+                        label_x = checkbox_rect.right + 16
+                        label_y = row_rect.centery
+                        if idx == 1:
+                            left = self.font_s.render('Passive and skill after effect', False, (39, 174, 96))
+                            plus = self.font_s.render(' + ', False, (0, 0, 0))
+                            right = self.font_s.render('Weakness system', False, (66, 66, 245))
+                            left_rect = left.get_rect(midleft=(label_x, label_y))
+                            self.screen.blit(left, left_rect)
+                            plus_rect = plus.get_rect(midleft=(left_rect.right, label_y))
+                            self.screen.blit(plus, plus_rect)
+                            right_rect = right.get_rect(midleft=(plus_rect.right, label_y))
+                            self.screen.blit(right, right_rect)
+                        else:
+                            label_surface = self.font_s.render(self._balance_option_labels[idx], False, self._balance_option_colors[idx])
+                            self.screen.blit(label_surface, label_surface.get_rect(midleft=(label_x, label_y)))
 
             # Map popup (reuse existing implementation)
             if self._map_popup_open:
@@ -374,51 +443,6 @@ class GameMainRenderMixin:
                 pygame.draw.rect(self.screen, (0, 0, 0), self._map_popup_select_rect, 2)
                 select_text = self.font_sm.render("SELECT", False, (0, 0, 0))
                 self.screen.blit(select_text, select_text.get_rect(center=self._map_popup_select_rect.center))
-
-        elif self.game_screen == 0.5:
-            self.screen.fill((214, 204, 188))
-
-            title_text = self.font_m.render('Balance Tweaking', False, (0, 0, 0))
-            self.screen.blit(title_text, title_text.get_rect(center=(WIDTH // 2, 190)))
-
-            # Option 1: New stats (green)
-            option1_pos = (120, 350)
-            option1_text = self.font_sm.render(self._balance_option_labels[0], False, (39, 174, 96))
-            self.screen.blit(option1_text, option1_text.get_rect(topleft=option1_pos))
-
-            # Option 2: New stats + (green + black) / Weakness system (blue)
-            option2_pos = (120, 440)
-            option2_line1_left = self.font_sm.render('New stats', False, (39, 174, 96))
-            self.screen.blit(option2_line1_left, option2_line1_left.get_rect(topleft=option2_pos))
-            plus_x = option2_pos[0] + option2_line1_left.get_width() + 12
-            option2_plus = self.font_sm.render('+', False, (0, 0, 0))
-            self.screen.blit(option2_plus, option2_plus.get_rect(topleft=(plus_x, option2_pos[1])))
-            option2_line2 = self.font_sm.render('Weakness system', False, (66, 66, 245))
-            self.screen.blit(option2_line2, option2_line2.get_rect(topleft=(option2_pos[0], option2_pos[1] + 40)))
-
-            # Option 3: Weakness system (blue)
-            option3_pos = (120, 545)
-            option3_text = self.font_sm.render(self._balance_option_labels[2], False, (66, 66, 245))
-            self.screen.blit(option3_text, option3_text.get_rect(topleft=option3_pos))
-
-            active_idx = next((i for i, checked in enumerate(self._balance_option_states) if checked), None)
-            for idx, checkbox_rect in enumerate(self._balance_checkbox_rects):
-                is_disabled = (active_idx is not None and idx != active_idx)
-                fill_color = (200, 200, 200) if is_disabled else (245, 245, 245)
-                border_color = (130, 130, 130) if is_disabled else (85, 85, 85)
-                pygame.draw.rect(self.screen, fill_color, checkbox_rect)
-                pygame.draw.rect(self.screen, border_color, checkbox_rect, 2)
-                if idx == self._balance_keyboard_index:
-                    pygame.draw.rect(self.screen, YELLOW, checkbox_rect, 3)
-                if self._balance_option_states[idx]:
-                    pygame.draw.line(self.screen, (0, 0, 0), (checkbox_rect.left + 4, checkbox_rect.centery), (checkbox_rect.centerx - 1, checkbox_rect.bottom - 4), 3)
-                    pygame.draw.line(self.screen, (0, 0, 0), (checkbox_rect.centerx - 1, checkbox_rect.bottom - 4), (checkbox_rect.right - 4, checkbox_rect.top + 4), 3)
-
-            button_fill = (235, 235, 235) if not self._balance_page_start_hovered else (223, 223, 223)
-            pygame.draw.rect(self.screen, button_fill, self._balance_page_start_button_rect)
-            pygame.draw.rect(self.screen, (60, 60, 60), self._balance_page_start_button_rect, 2)
-            start_text = self.font_sm.render('START', False, (0, 0, 0))
-            self.screen.blit(start_text, start_text.get_rect(center=self._balance_page_start_button_rect.center))
 
         elif self.game_screen == 1:
             self.screen.fill(SMOKE)
