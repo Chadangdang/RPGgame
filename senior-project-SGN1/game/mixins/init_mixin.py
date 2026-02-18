@@ -133,6 +133,12 @@ class GameMainInitMixin:
             self._settings_popup_rect.width - 280,
             92,
         )
+        self._settings_main_resolution_button_rect = pygame.Rect(
+            self._settings_popup_rect.x + 140,
+            self._settings_popup_rect.y + 330,
+            self._settings_popup_rect.width - 280,
+            92,
+        )
         self._settings_sub_back_rect = pygame.Rect(
             self._settings_popup_rect.x + 44,
             self._settings_popup_rect.y + 34,
@@ -350,6 +356,13 @@ class GameMainInitMixin:
         # Nudge a tiny bit smaller to be strictly under the limits
         s = min(s, 0.75)
         return max(0.5, s)
+
+    def _toggle_resolution(self) -> None:
+        """Toggle between full size and laptop-friendly size."""
+        if self.scale < 0.99:
+            self._apply_scale(1.0)
+        else:
+            self._apply_scale(self._scale_for_laptop())
 
     def _scale_events_to_base(self, events: list[pygame.event.Event]) -> list[pygame.event.Event]:
         """Return a copy of events with .pos mapped into base-space (divide by scale)."""

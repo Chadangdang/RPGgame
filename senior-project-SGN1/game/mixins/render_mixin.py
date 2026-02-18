@@ -328,8 +328,8 @@ class GameMainRenderMixin:
             # Settings button (top-right)
             self._settings_button_hovered = self._settings_button_rect.collidepoint(mouse_pos)
             settings_fill = (245, 245, 245) if not self._settings_button_hovered else (230, 230, 230)
-            pygame.draw.rect(self.screen, settings_fill, self._settings_button_rect, border_radius=10)
-            pygame.draw.rect(self.screen, (0, 0, 0), self._settings_button_rect, 2, border_radius=10)
+            pygame.draw.rect(self.screen, settings_fill, self._settings_button_rect)
+            pygame.draw.rect(self.screen, (0, 0, 0), self._settings_button_rect, 2)
             setting_text = self.font_s.render('Setting', False, (0, 0, 0))
             self.screen.blit(setting_text, setting_text.get_rect(center=self._settings_button_rect.center))
 
@@ -352,8 +352,15 @@ class GameMainRenderMixin:
                     btn_fill = (236, 228, 215) if not main_btn_hovered else (226, 216, 199)
                     pygame.draw.rect(self.screen, btn_fill, self._settings_main_balance_button_rect, border_radius=10)
                     pygame.draw.rect(self.screen, (90, 80, 66), self._settings_main_balance_button_rect, 2, border_radius=10)
-                    balance_btn_text = self.font_sm.render('Balance Tweaking', False, (0, 0, 0))
+                    balance_btn_text = self.font_sm.render('Balance Tweaking >', False, (0, 0, 0))
                     self.screen.blit(balance_btn_text, balance_btn_text.get_rect(center=self._settings_main_balance_button_rect.center))
+
+                    resolution_btn_hovered = self._settings_main_resolution_button_rect.collidepoint(mouse_pos)
+                    resolution_btn_fill = (236, 228, 215) if not resolution_btn_hovered else (226, 216, 199)
+                    pygame.draw.rect(self.screen, resolution_btn_fill, self._settings_main_resolution_button_rect, border_radius=10)
+                    pygame.draw.rect(self.screen, (90, 80, 66), self._settings_main_resolution_button_rect, 2, border_radius=10)
+                    resolution_btn_text = self.font_sm.render('Toggle Resolution', False, (0, 0, 0))
+                    self.screen.blit(resolution_btn_text, resolution_btn_text.get_rect(center=self._settings_main_resolution_button_rect.center))
                 else:
                     back_hovered = self._settings_sub_back_rect.collidepoint(mouse_pos)
                     back_fill = (236, 236, 236) if not back_hovered else (223, 223, 223)

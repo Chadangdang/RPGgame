@@ -83,11 +83,7 @@ class GameMainUpdateMixin:
                         self.game_screen = 0  # Go to AI selection screen
                     # Apply laptop scaling when clicking the Laptop/Macbook button
                     if event.button == 1 and self.laptop_button_rect.collidepoint(event.pos):
-                        # Toggle: if currently scaled down, restore to 1.0; otherwise scale for laptop
-                        if self.scale < 0.99:
-                            self._apply_scale(1.0)
-                        else:
-                            self._apply_scale(self._scale_for_laptop())
+                        self._toggle_resolution()
 
         elif self.game_screen == 0:       # AI select screen
             if not self._map_popup_open:
@@ -151,6 +147,10 @@ class GameMainUpdateMixin:
                         if self._settings_popup_page == 'main':
                             if self._settings_main_balance_button_rect.collidepoint(event.pos):
                                 self._settings_popup_page = 'balance'
+                                continue
+                            if self._settings_main_resolution_button_rect.collidepoint(event.pos):
+                                self._toggle_resolution()
+                                continue
                             continue
 
                         if self._settings_sub_back_rect.collidepoint(event.pos):
