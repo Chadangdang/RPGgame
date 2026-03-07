@@ -153,25 +153,29 @@ class GameMainInitMixin:
         )
 
         self._balance_option_labels = [
-            'Passive and skill after effect',
-            'Passive and skill after effect + Weakness system',
-            'Weakness system',
+            'Baseline',
+            'Passive-Enhanced',
+            'Weakness-Based',
+            'Combined Mode',
         ]
         self._balance_option_colors = [
+            (0, 0, 0),
             (39, 174, 96),
             (66, 66, 245),
-            (66, 66, 245),
+            (0, 0, 0),
         ]
-        self._balance_option_states = [True, False, False]
+        self._balance_option_states = [True, False, False, False]
         self._balance_option_row_rects = [
             pygame.Rect(self._settings_popup_rect.x + 140, self._settings_popup_rect.y + 205, self._settings_popup_rect.width - 280, 92),
             pygame.Rect(self._settings_popup_rect.x + 140, self._settings_popup_rect.y + 330, self._settings_popup_rect.width - 280, 92),
             pygame.Rect(self._settings_popup_rect.x + 140, self._settings_popup_rect.y + 455, self._settings_popup_rect.width - 280, 92),
+            pygame.Rect(self._settings_popup_rect.x + 140, self._settings_popup_rect.y + 580, self._settings_popup_rect.width - 280, 92),
         ]
         self._balance_checkbox_rects = [
             pygame.Rect(self._balance_option_row_rects[0].x + 18, self._balance_option_row_rects[0].y + 31, 30, 30),
             pygame.Rect(self._balance_option_row_rects[1].x + 18, self._balance_option_row_rects[1].y + 31, 30, 30),
             pygame.Rect(self._balance_option_row_rects[2].x + 18, self._balance_option_row_rects[2].y + 31, 30, 30),
+            pygame.Rect(self._balance_option_row_rects[3].x + 18, self._balance_option_row_rects[3].y + 31, 30, 30),
         ]
         self._balance_keyboard_index = 0
 

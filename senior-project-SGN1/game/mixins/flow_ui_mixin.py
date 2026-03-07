@@ -336,19 +336,19 @@ class GameMainFlowUiMixin:
             pygame.draw.rect(self.screen, YELLOW, selected_rect, 4)
 
     def _is_new_stats_enabled(self) -> bool:
-        # Option 0 = "New stats", Option 1 = "New stats + Weakness system"
-        return bool(self._balance_option_states[0] or self._balance_option_states[1])
+        # Option 1 = Passive-Enhanced, Option 3 = Combined Mode
+        return bool(self._balance_option_states[1] or self._balance_option_states[3])
 
     def _is_weakness_system_enabled(self) -> bool:
-        # Option 1 = "New stats + Weakness system", Option 2 = "Weakness system"
-        return bool(self._balance_option_states[1] or self._balance_option_states[2])
+        # Option 2 = Weakness-Based, Option 3 = Combined Mode
+        return bool(self._balance_option_states[2] or self._balance_option_states[3])
 
     def _fireball_burn_mode(self) -> str:
-        # Option 0 = New stats only
-        # Option 1 = New stats + Weakness system
-        if self._balance_option_states[1]:
+        # Option 1 = Passive-Enhanced
+        # Option 3 = Combined Mode
+        if self._balance_option_states[3]:
             return 'new_stats_weakness'
-        if self._balance_option_states[0]:
+        if self._balance_option_states[1]:
             return 'new_stats_only'
         return 'default'
 

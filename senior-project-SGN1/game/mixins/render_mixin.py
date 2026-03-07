@@ -388,16 +388,25 @@ class GameMainRenderMixin:
 
                         label_x = checkbox_rect.right + 16
                         label_y = row_rect.centery
-                        if idx == 1:
-                            left = self.font_s.render('Passive and skill after effect', False, (39, 174, 96))
+                        if idx == 3:
+                            mode = self.font_s.render('Combined Mode', False, (0, 0, 0))
+                            lparen = self.font_s.render(' (', False, (0, 0, 0))
+                            left = self.font_s.render('Passive-Enhanced', False, (39, 174, 96))
                             plus = self.font_s.render(' + ', False, (0, 0, 0))
-                            right = self.font_s.render('Weakness system', False, (66, 66, 245))
-                            left_rect = left.get_rect(midleft=(label_x, label_y))
+                            right = self.font_s.render('Weakness-Based', False, (66, 66, 245))
+                            rparen = self.font_s.render(')', False, (0, 0, 0))
+                            mode_rect = mode.get_rect(midleft=(label_x, label_y))
+                            self.screen.blit(mode, mode_rect)
+                            lparen_rect = lparen.get_rect(midleft=(mode_rect.right, label_y))
+                            self.screen.blit(lparen, lparen_rect)
+                            left_rect = left.get_rect(midleft=(lparen_rect.right, label_y))
                             self.screen.blit(left, left_rect)
                             plus_rect = plus.get_rect(midleft=(left_rect.right, label_y))
                             self.screen.blit(plus, plus_rect)
                             right_rect = right.get_rect(midleft=(plus_rect.right, label_y))
                             self.screen.blit(right, right_rect)
+                            rparen_rect = rparen.get_rect(midleft=(right_rect.right, label_y))
+                            self.screen.blit(rparen, rparen_rect)
                         else:
                             label_surface = self.font_s.render(self._balance_option_labels[idx], False, self._balance_option_colors[idx])
                             self.screen.blit(label_surface, label_surface.get_rect(midleft=(label_x, label_y)))
