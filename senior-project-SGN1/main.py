@@ -21,7 +21,8 @@ AI_SELECTION_LABELS = (
     'Perfect Play AI',
     'Random AI',
     'Personality Cores AI',
-    'Disable AI'
+    'Aggressive AI',
+    'Survival AI'
 )
 
 
@@ -1581,7 +1582,7 @@ class GameMain:
 
         self.match_limit = max(self._match_limit_min, min(self._match_limit_max, self.match_limit))
 
-        AI_types = ('Player Input', 'Perfect Play AI', 'Random AI', 'Personality Cores AI', 'Disable AI') # not 'Independent Action AI' anymore
+        AI_types = ('Player Input', 'Perfect Play AI', 'Random AI', 'Personality Cores AI', 'Aggressive AI', 'Survival AI') # added Aggressive AI
         self.team1_ID = self.p1_sel_cursor.grid[0]
         self.team2_ID = self.p2_sel_cursor.grid[0]
         print(f'{AI_types[self.team1_ID]} vs {AI_types[self.team2_ID]}')
@@ -3145,7 +3146,7 @@ class GameMain:
             self.screen.blit(game_state_text, text_rect)
 
             # AI Type vs AI Type (May hide later)
-            AI_types = ('Player Input', 'Perfect Play AI', 'Random AI', 'Personality Cores AI', 'Independent Action AI')
+            AI_types = ('Player Input', 'Perfect Play AI', 'Random AI', 'Personality Cores AI', 'Aggressive AI', 'Survival AI')
             text = self.font_ss.render(f'{AI_types[self.p1_sel_cursor.grid[0]]} vs {AI_types[self.p2_sel_cursor.grid[0]]}', False, (0, 0, 0))
             text_rect = text.get_rect(bottomleft=(50, 30))
             self.screen.blit(text, text_rect)

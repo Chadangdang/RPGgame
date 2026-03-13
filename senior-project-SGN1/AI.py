@@ -708,7 +708,7 @@ class PersonalityCores(AIFramework):
         self.turnFinished = self.checkCharaActed()
 
 
-class IndependentAction(AIFramework):
+class SurvivalAI(AIFramework):
     def __init__(self, team) -> None:
         super().__init__(team)
 
@@ -719,6 +719,128 @@ class IndependentAction(AIFramework):
         super().calculate()
 
     def activate(self, activationNo: int) -> None:
-        super().activate(activationNo)
-        charaName = self.own_team[activationNo].template["display_name"]  # remove this line when AI is usable
-        self.action_log.extend([f'{charaName} pass'])  # remove this line when AI is usable
+        chara = self.own_team[activationNo]
+        # Survival AI currently defaults to passing (placeholder).
+        # Use the proper pass method so logs and state are consistent.
+        self.passCharaAction(chara)
+
+
+class AggressiveAI(PersonalityCores):
+    def __init__(self, team) -> None:
+        super().__init__(team)
+
+    def reset(self) -> None:
+        super().reset()
+
+    def calculate(self) -> None:
+        # Force the chosen personality to Aggressive
+        self.chosen_personality = None
+        for p in self.personalities:
+            if p.name.lower() == 'aggressive':
+                self.chosen_personality = p
+                break
+
+        # Fallback if not found
+        if self.chosen_personality is None:
+            self.chosen_personality = self.personalities[0]
+
+        # PART 1
+        # GOAL: Evaluate the danger of each tile as a heat map
+        enemyThreatMap = np.zeros(
+            (GRID_ROWS, GRID_COLS))  # Theroetical maximum damage the enemy team can deal to a tile
+        for enemy_unit in self.enemy_team:
+            movementMap = np.array(
+                self.field.getMovement(enemy_unit,
+                                    False))  # Get list of coordinates that the enemy character can move to
+
+            movementTiles = np.argwhere(
+                movementMap > 0)  # Note: Does not consider the fact that characters may not stack on the same tile
+            actionMap = np.zeros((GRID_ROWS, GRID_COLS))  # Theoretical maximum damage for that single enemy character
+            for tile in movementTiles:
+                for actionNo in range(
+                        len(enemy_unit.template["actions"])):  # Get the damage map of each specific action
+                    tempMap = self.field.getActionArea(enemy_unit, actionNo, False, (tile[0], tile[1]))
+                    actionMap = np.maximum(actionMap, tempMap)  # Only keep the highest damage value for each tile
+            enemyThreatMap = enemyThreatMap + actionMap  # Add that character's maximum damage to the total
+
+        # PART 1.5
+        # GOAL: Encourage the AI to move its units into the objective squares
+
+        OBJECTIVE_WEIGHT = 8 * (sum(i.template['curHP'] for i in self.own_team) / (sum(i.template['curHP'] for i in self.enemy_team) + 0.000000000000001))  # for avoiding div by zero
+
+        # PART 2
+        # GOAL: Evaluate the damage
+
+        enemy_team_HP = 0
+        own_team_HP = 0
+        enemy_team_max_HP = 0
+        for i in self.enemy_team:
+            enemy_team_HP += i.template['curHP']
+            enemy_team_max_HP += i.template['maxHP']
+        for i in self.own_team:
+            own_team_HP += i.template['curHP']
+
+        THREAT_WEIGHT = 0.1 * (enemy_team_HP / (own_team_HP + 0.000000000000001))
+
+        DAMAGE_WEIGHT = 1.5 - 0.5 * (enemy_team_HP / (enemy_team_max_HP + 0.000000000000001))
+
+        optimalIndicesList = []  # List of list of indices
+        for own_unit in self.own_team:
+            movementMap = np.array(self.field.getMovement(own_unit, False))  # Same system as part 1
+
+            ### Some logic here to remove tiles with enemy_team on them
+            #
+            enemy_pos = [enemy.grid for enemy in self.enemy_team]  # Get list of enemy team's grid coordinates
+            rows, cols = np.transpose(enemy_pos)  # There is probably a better way to do this
+            enemy_pos_full = np.zeros((GRID_ROWS, GRID_COLS))
+            enemy_pos_full[(rows, cols)] = 1
+            movementMap = np.logical_and(movementMap,
+                                        np.logical_not(enemy_pos_full))  # Remove occupied tiles from consideration
+            #
+            ###
+
+            movementTiles = np.argwhere(movementMap > 0)
+            destinationMap = np.ones((GRID_ROWS, GRID_COLS)) * -999
+            for tile in movementTiles:
+                damageMap = np.zeros((GRID_ROWS, GRID_COLS))  # Instead of keeping potential damage on other tiles,
+                optimalActionNo = 0
+                targetPlayerID = 999
+                for actionNo in range(len(own_unit.template["actions"])):
+                    tempMap = self.field.getActionArea(own_unit, actionNo, False, (tile[0], tile[1]))
+                    if np.array_equal(tempMap, np.maximum(damageMap, tempMap)):
+                        optimalActionNo = actionNo
+                        for enemy_unit in self.enemy_team:
+                            if tempMap[enemy_unit.grid[0]][enemy_unit.grid[1]] > 0:  # Player can be targeted
+                                targetPlayerID = enemy_unit.id
+                        damageMap = np.copy(tempMap)
+                destinationMap[tile[0]][tile[1]] = np.max(
+                    damageMap)  # The maximum damage is registered to the movement tile instead
+                
+            ########
+            # APPLY ADJUSTMENTS FROM PERSONALITY
+            #
+            c_weights = [DAMAGE_WEIGHT, OBJECTIVE_WEIGHT, THREAT_WEIGHT]
+            DAMAGE_WEIGHT, OBJECTIVE_WEIGHT, THREAT_WEIGHT = [c_weight * mult for c_weight, mult in zip(c_weights, self.chosen_personality.c_weights_mult)]
+            #
+            #
+            ########
+            
+            objectiveMap = np.zeros((GRID_ROWS, GRID_COLS))
+            objectiveMap[np.nonzero(self.terrain == 3)] = OBJECTIVE_WEIGHT
+            objectiveMap = propagate_half(objectiveMap)
+
+            destinationMap = (DAMAGE_WEIGHT * destinationMap) + objectiveMap - (THREAT_WEIGHT * enemyThreatMap)
+            optimalIndices = np.argwhere(destinationMap == np.max(destinationMap))
+            try:  # idk
+                optimalIndicesList.append([own_unit.id, optimalActionNo, targetPlayerID, optimalIndices])
+            except UnboundLocalError:
+                optimalIndicesList.append([own_unit.id, 0, targetPlayerID, optimalIndices])
+        optimalIndicesList = sorted(optimalIndicesList, key=lambda s: -len(
+            s[3]))  # Sorts the list to let the character with the most optimal tiles "place" first
+        for data in optimalIndicesList:  # Insanity
+            for index in data[3]:
+                self.optimalMap[0][index[0]][index[1]] = data[0]  # Own ID
+                self.optimalMap[1][index[0]][index[1]] = data[1]  # Action to use
+                self.optimalMap[2][index[0]][index[1]] = data[2]  # Target ID
+
+        super().calculate()
