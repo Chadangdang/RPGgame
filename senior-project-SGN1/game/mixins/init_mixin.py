@@ -14,6 +14,9 @@ import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from datetime import datetime
 import os
+from types import SimpleNamespace
+
+from game.balance import balance_controller
 
 AI_SELECTION_LABELS = (
     'Player Input',
@@ -178,6 +181,9 @@ class GameMainInitMixin:
             pygame.Rect(self._balance_option_row_rects[3].x + 18, self._balance_option_row_rects[3].y + 31, 30, 30),
         ]
         self._balance_keyboard_index = 0
+
+        self.settings = SimpleNamespace(balance_mode=balance_controller.BASELINE)
+        balance_controller.load_balance_mode(self.settings.balance_mode)
 
         self.game_state = 'selecting start area'
 
