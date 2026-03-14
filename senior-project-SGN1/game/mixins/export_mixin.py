@@ -13,7 +13,7 @@ from MapData import MapData
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from datetime import datetime
-import os
+from pathlib import Path
 
 AI_SELECTION_LABELS = (
     'Player Input',
@@ -58,6 +58,35 @@ SB_THUMB_DRAG  = (130, 120, 105)
 class GameMainExportMixin:
     def export_game_log(self) -> None:
         """Export all played games into one workbook with per-game log + summary sheets."""
+
+        def convert_to_board_position(row, col) -> str:
+            try:
+                row_int = int(row)
+                col_int = int(col)
+            except (TypeError, ValueError):
+                return ""
+            if col_int < 0:
+                return ""
+            column_letter = chr(ord('A') + col_int)
+            return f"{column_letter}{row_int}"
+
+        def normalize_position(value) -> str:
+            if value is None:
+                return ""
+            value_str = str(value).strip()
+            if not value_str:
+                return ""
+
+            upper_value = value_str.upper()
+            if len(upper_value) >= 2 and upper_value[0].isalpha() and upper_value[1:].isdigit():
+                return upper_value
+
+            if "," in value_str:
+                parts = [part.strip() for part in value_str.split(",", 1)]
+                if len(parts) == 2:
+                    return convert_to_board_position(parts[0], parts[1])
+
+            return value_str
 
         def make_sheet_title(raw_title: str, used_titles: set[str]) -> str:
             invalid_chars = set('[]:*?/\\')
@@ -105,8 +134,10 @@ class GameMainExportMixin:
             )
             summary_title_font = Font(bold=True, color="FFFFFF", size=13)
             summary_title_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
-            summary_metric_font = Font(bold=True, color="FFFFFF")
+            summary_metric_font = Font(bold=True)
             summary_metric_fill = PatternFill(start_color="00B050", end_color="00B050", fill_type="solid")
+            summary_value_font = Font(bold=False, color="000000")
+            summary_value_fill = PatternFill(fill_type=None)
 
             # Oldest -> newest already preserved by structured append order.
             ordered_logs = [entry for entry in self.game_log if isinstance(entry, dict)]
@@ -182,7 +213,7 @@ class GameMainExportMixin:
 
             headers = [
                 "No.", "Log", "Match", "Round", "Team", "Time (seconds)", "Class", "Health",
-                "Position (Row, Col)", "Action type", "Action name", "Target Class", "Target Position",
+                "Position", "Action type", "Action name", "Target Class", "Target Position",
                 "Damage", "Heal", "Target Health before", "Target Health after"
             ]
             column_widths = [6, 48, 8, 8, 6, 14, 18, 10, 18, 14, 18, 18, 18, 10, 10, 20, 20]
@@ -203,6 +234,8 @@ class GameMainExportMixin:
                     cell.border = thin_border
 
                 for index, entry in enumerate(game_data["rows"], start=1):
+                    position = normalize_position(entry.get("position", ""))
+                    target_position = normalize_position(entry.get("target_position", ""))
                     row_values = [
                         index,
                         str(entry.get("log", "")),
@@ -212,11 +245,11 @@ class GameMainExportMixin:
                         as_float(entry.get("time", 0.0), 0.0),
                         str(entry.get("class", "")),
                         as_int(entry.get("health", 0), 0),
-                        str(entry.get("position", "")),
+                        position,
                         str(entry.get("action_type", "")),
                         str(entry.get("action_name", "")),
                         str(entry.get("target_class", "")),
-                        str(entry.get("target_position", "")),
+                        target_position,
                         as_int(entry.get("damage", 0), 0),
                         as_int(entry.get("heal", 0), 0),
                         as_int(entry.get("target_hp_before", 0), 0),
@@ -260,20 +293,26 @@ class GameMainExportMixin:
                 ]
 
                 for row_idx, (metric, value) in enumerate(summary_data, start=2):
-                    summary_ws.cell(row=row_idx, column=1, value=metric)
-                    summary_ws.cell(row=row_idx, column=2, value=value)
-                    for col in (1, 2):
-                        cell = summary_ws.cell(row=row_idx, column=col)
-                        cell.font = summary_metric_font
-                        cell.fill = summary_metric_fill
-                        cell.alignment = Alignment(horizontal="left", vertical="center")
-                        cell.border = thin_border
+                    metric_cell = summary_ws.cell(row=row_idx, column=1, value=metric)
+                    metric_cell.font = summary_metric_font
+                    metric_cell.fill = summary_metric_fill
+                    metric_cell.alignment = Alignment(horizontal="left", vertical="center")
+                    metric_cell.border = thin_border
 
-            export_dir = "exports"
-            os.makedirs(export_dir, exist_ok=True)
-            filename = f"{export_dir}/game_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-            wb.save(filename)
-            print(f"Game log exported to: {filename}")
+                    value_cell = summary_ws.cell(row=row_idx, column=2, value=value)
+                    value_cell.font = summary_value_font
+                    value_cell.fill = summary_value_fill
+                    value_cell.alignment = Alignment(horizontal="left", vertical="center")
+                    value_cell.border = thin_border
+
+            desktop = Path.home() / "Desktop"
+            export_dir = desktop / "RPG Simulation Export"
+            export_dir.mkdir(parents=True, exist_ok=True)
+
+            filename = f"game_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+            filepath = export_dir / filename
+            wb.save(filepath)
+            print(f"Game log exported to: {filepath}")
 
         except Exception as e:
             print(f"Error exporting game log: {e}")
