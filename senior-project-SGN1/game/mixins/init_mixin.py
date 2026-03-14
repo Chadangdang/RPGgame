@@ -115,6 +115,8 @@ class GameMainInitMixin:
         self._model_scroll_offset = 0
         self._model_scroll_dragging = [False, False]  # [left, right]
         self._model_scroll_drag_offset = [0, 0]
+        self._model_sb_dragging_left = False
+        self._model_sb_dragging_right = False
         # Buttons for model selection (under AI choices)
         self._model_btn_p1 = pygame.Rect(360, 590, 260, 40)
         self._model_btn_p2 = pygame.Rect(630, 590, 260, 40)

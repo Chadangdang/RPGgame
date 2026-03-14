@@ -212,9 +212,8 @@ class GameMainRenderMixin:
             self.screen.blit(p1_title, p1_title.get_rect(center=p1_banner.center))
             self.screen.blit(p2_title, p2_title.get_rect(center=p2_banner.center))
 
-            # Build display labels: first is Player Input, then AI_1..AI_4 with the existing model names appended
+            labels = list(AI_SELECTION_LABELS)
             model_names = AI_SELECTION_LABELS
-            labels = [model_names[0]] + [f'AI_{i}' for i in range(1, len(model_names))]
 
             def draw_column(is_left: bool) -> None:
                 origin_x, origin_y = self._model_column_origin(is_left)
@@ -232,10 +231,7 @@ class GameMainRenderMixin:
                     pygame.draw.rect(self.screen, BLACK, rect, 2)
 
                     lbl_surface = self.font_sm.render(labels[idx], False, (0, 0, 0))
-                    self.screen.blit(lbl_surface, lbl_surface.get_rect(midleft=(rect.left + 18, rect.centery)))
-                    if idx > 0:
-                        mdl_surface = self.font_ss.render(model_names[idx], False, (0, 0, 0))
-                        self.screen.blit(mdl_surface, mdl_surface.get_rect(midright=(rect.right - 18, rect.centery)))
+                    self.screen.blit(lbl_surface, lbl_surface.get_rect(center=rect.center))
 
                     # Selection highlight (neon yellow inspired by map popup)
                     sel_cursor = self.p1_sel_cursor if is_left else self.p2_sel_cursor
@@ -254,7 +250,11 @@ class GameMainRenderMixin:
                 thumb = self._model_thumb_rect(is_left)
                 pygame.draw.rect(self.screen, (254, 254, 254), track)
                 pygame.draw.rect(self.screen, BLACK, track, 2)
-                pygame.draw.rect(self.screen, (217, 217, 217), thumb)
+                if thumb.collidepoint(mouse_pos):
+                    thumb_color = (200, 200, 200)
+                else:
+                    thumb_color = (217, 217, 217)
+                pygame.draw.rect(self.screen, thumb_color, thumb)
                 pygame.draw.rect(self.screen, BLACK, thumb, 1)
 
             draw_column(True)

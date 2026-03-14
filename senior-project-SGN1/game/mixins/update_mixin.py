@@ -216,6 +216,8 @@ class GameMainUpdateMixin:
                         if self.map_number > len(self.map_list):
                             self.map_number = 0
 
+                mouse_pos = pygame.mouse.get_pos()
+
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     if event.button == 1:
                         if self._start_button_rect.collidepoint(event.pos) and self.p1_sel_cursor.show and self.p2_sel_cursor.show:
@@ -251,12 +253,12 @@ class GameMainUpdateMixin:
                             continue
 
                         # Scrollbar thumbs
-                        if left_thumb.collidepoint(event.pos):
-                            self._model_scroll_dragging[0] = True
-                            self._model_scroll_drag_offset[0] = event.pos[1] - left_thumb.centery
-                        elif right_thumb.collidepoint(event.pos):
-                            self._model_scroll_dragging[1] = True
-                            self._model_scroll_drag_offset[1] = event.pos[1] - right_thumb.centery
+                        if self._model_thumb_rect(True).collidepoint(mouse_pos):
+                            self._model_sb_dragging_left = True
+
+                        if self._model_thumb_rect(False).collidepoint(mouse_pos):
+                            self._model_sb_dragging_right = True
+
                         # Scrollbar track clicks jump to position
                         elif self._model_track_rect(True).collidepoint(event.pos):
                             self._model_scroll_offset = self._model_offset_from_thumb(event.pos[1], True)
@@ -287,7 +289,9 @@ class GameMainUpdateMixin:
                         if not _pick_from_list(True):
                             _pick_from_list(False)
 
-                if event.type == pygame.MOUSEBUTTONUP:
+                elif event.type == pygame.MOUSEBUTTONUP:
+                    self._model_sb_dragging_left = False
+                    self._model_sb_dragging_right = False
                     if event.button == 1:
                         self._model_scroll_dragging = [False, False]
                         if hasattr(self, "_match_limit_slider_dragging") and self._match_limit_slider_dragging:
@@ -295,7 +299,16 @@ class GameMainUpdateMixin:
                         if hasattr(self, "_game_limit_slider_dragging") and self._game_limit_slider_dragging:
                             self._game_limit_slider_dragging = False
 
-                if event.type == pygame.MOUSEMOTION:
+                elif event.type == pygame.MOUSEMOTION:
+
+                    if self._model_sb_dragging_left:
+                        new_offset = self._model_offset_from_thumb(mouse_pos[1], True)
+                        self._model_scroll_offset = new_offset
+
+                    if self._model_sb_dragging_right:
+                        new_offset = self._model_offset_from_thumb(mouse_pos[1], False)
+                        self._model_scroll_offset = new_offset
+
                     if hasattr(self, "_game_limit_slider_dragging") and self._game_limit_slider_dragging:
                         if hasattr(self, "_game_limit_value_from_pos"):
                             self.game_limit = self._game_limit_value_from_pos(event.pos[0])
@@ -307,6 +320,7 @@ class GameMainUpdateMixin:
                             if dragging:
                                 center_y = event.pos[1] - self._model_scroll_drag_offset[idx]
                                 self._model_scroll_offset = self._model_offset_from_thumb(center_y, idx == 0)
+                    self._model_scroll_offset = max(0, min(self._model_scroll_offset, self._model_max_offset()))
 
                 if event.type == pygame.MOUSEWHEEL:
                     mx, my = pygame.mouse.get_pos()
