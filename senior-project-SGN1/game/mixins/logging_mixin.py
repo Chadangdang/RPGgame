@@ -14,6 +14,7 @@ import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from datetime import datetime
 import os
+from game.balance import balance_controller
 
 AI_SELECTION_LABELS = (
     'Player Input',
@@ -55,6 +56,83 @@ SB_THUMB_HOVER = (145, 135, 120)
 SB_THUMB_DRAG  = (130, 120, 105)
 
 class GameMainLoggingMixin:
+    def get_balance_mode(self) -> str:
+        """Return the selected balance mode, defaulting to BASELINE."""
+        settings = getattr(self, "settings", None)
+        mode = getattr(settings, "balance_mode", balance_controller.BASELINE)
+        mode_name = str(mode).strip().upper()
+        valid_modes = {
+            balance_controller.BASELINE,
+            balance_controller.PASSIVE,
+            balance_controller.WEAKNESS,
+            balance_controller.COMBINED,
+        }
+        return mode_name if mode_name in valid_modes else balance_controller.BASELINE
+
+    def _is_passive_logging_mode(self) -> bool:
+        return self.get_balance_mode() in {balance_controller.PASSIVE, balance_controller.COMBINED}
+
+    def _is_weakness_logging_mode(self) -> bool:
+        return self.get_balance_mode() in {balance_controller.WEAKNESS, balance_controller.COMBINED}
+
+    def _ensure_balance_counters(self) -> None:
+        if not hasattr(self, "passive_trigger_count"):
+            self.passive_trigger_count = 0
+        if not hasattr(self, "weakness_trigger_count"):
+            self.weakness_trigger_count = 0
+
+    def _log_balance_summary(self, time_elapsed: float = 0.0) -> None:
+        self._ensure_balance_counters()
+        mode = self.get_balance_mode()
+        if mode == balance_controller.BASELINE:
+            return
+        if mode in {balance_controller.PASSIVE, balance_controller.COMBINED}:
+            self.log(
+                f"SUMMARY : Passive effects triggered {self.passive_trigger_count} times",
+                LOG_COLOR_SUMMARY,
+                time_elapsed=time_elapsed,
+            )
+        if mode in {balance_controller.WEAKNESS, balance_controller.COMBINED}:
+            self.log(
+                f"SUMMARY : Weakness bonuses triggered {self.weakness_trigger_count} times",
+                LOG_COLOR_SUMMARY,
+                time_elapsed=time_elapsed,
+            )
+
+    def _find_character_by_name(self, display_name: str):
+        for chara in Character.team1_list + Character.team2_list:
+            if chara.template.get("display_name", "") == display_name:
+                return chara
+        return None
+
+    def _log_weakness_multiplier_for_attack(self, team: int, actor: str, target: str, time_elapsed: float = 0.0) -> None:
+        if not self._is_weakness_logging_mode():
+            return
+        self._ensure_balance_counters()
+        actor_chara = self._find_character_by_name(actor)
+        target_chara = self._find_character_by_name(target)
+        if not actor_chara or not target_chara:
+            return
+
+        multiplier = balance_controller.weakness_mode.weakness_multiplier(
+            actor_chara.template.get("display_name", ""),
+            target_chara.template.get("display_name", ""),
+        )
+        if multiplier > 1.0:
+            self.log(
+                f"{'P1' if team == 1 else 'P2'} : Weakness multiplier applied ({multiplier:.1f}x)",
+                LOG_COLOR_P1 if team == 1 else LOG_COLOR_P2,
+                time_elapsed=time_elapsed,
+            )
+            self.weakness_trigger_count += 1
+        elif multiplier < 1.0:
+            self.log(
+                f"{'P1' if team == 1 else 'P2'} : Resistance applied ({multiplier:.1f}x)",
+                LOG_COLOR_P1 if team == 1 else LOG_COLOR_P2,
+                time_elapsed=time_elapsed,
+            )
+            self.weakness_trigger_count += 1
+
     def log(self, text: str, color=(0, 0, 0), time_elapsed=0.0) -> None:
         """Append a line to the game log."""
         # Store tuple: (text, color, time_elapsed)
@@ -89,6 +167,9 @@ class GameMainLoggingMixin:
         actor_health = 0  # Initialize actor's health
         if event == "match_start":
             tag = "GAME"
+            self._ensure_balance_counters()
+            self.passive_trigger_count = 0
+            self.weakness_trigger_count = 0
             message = ("Match {match} starts   Map: {map_label}   P1: {ai1}   P2: {ai2}".format(
                 match=kwargs.get("match"),
                 map_label=kwargs.get("map_label", ""),
@@ -134,6 +215,12 @@ class GameMainLoggingMixin:
                 if chara.template.get("display_name", "") == actor:
                     actor_health = chara.template.get("curHP", 0)
                     break
+            self._log_weakness_multiplier_for_attack(
+                team=team,
+                actor=actor,
+                target=target,
+                time_elapsed=kwargs.get("time_elapsed", 0.0),
+            )
         elif event == "heal":
             team = kwargs.get("team")
             tag = "P1" if team == 1 else "P2"
@@ -223,6 +310,14 @@ class GameMainLoggingMixin:
             message = f"{message} (Actor HP: {actor_health})"
         time_elapsed = kwargs.get("time_elapsed", 0.0)
         self.log(f"{label}{message}", tag_color(tag), time_elapsed=time_elapsed)
+        if event == "match_start":
+            self.log(
+                f"GAME : Balance Mode -> {self.get_balance_mode()}",
+                tag_color("GAME"),
+                time_elapsed=time_elapsed,
+            )
+        elif event in {"round_end", "match_over"}:
+            self._log_balance_summary(time_elapsed=time_elapsed)
 
     def _get_ai_label(self, team_id: int) -> str:
         if 0 <= team_id < len(self._ai_type_labels):
@@ -361,27 +456,34 @@ class GameMainLoggingMixin:
                 # as extra lines (indented). Detect common passive keywords and
                 # convert them directly into colored log entries.
                 passive_detected = False
+                passive_message = stripped
                 if stripped:
                     low = stripped.lower()
-                    if ("burned" in low) or ("burn" in low and "dmg" in low):
-                        passive_detected = True
-                    if "movement reduced" in low or "movement reduced by" in low:
-                        passive_detected = True
-                    if "healed" in low and "from" in low:
-                        passive_detected = True
-                    if "reduces incoming damage" in low or "reduces incoming" in low:
-                        passive_detected = True
-                    if "heals" in low and "from" in low:
-                        passive_detected = True
-                    # Terrain/attack multipliers and similar passive messages
-                    if "deals" in low and ("x" in low or "more" in low or "due" in low or "damage" in low):
-                        passive_detected = True
+                    passive_keywords = (
+                        "lifesteal",
+                        "burn",
+                        "poison",
+                        "shield",
+                        "regen",
+                        "damage reduction",
+                    )
+                    passive_detected = any(keyword in low for keyword in passive_keywords)
+                    if not passive_detected:
+                        passive_detected = (
+                            "movement reduced" in low
+                            or "healed" in low and "from" in low
+                            or "heals" in low and "from" in low
+                            or "reduces incoming" in low
+                        )
                 if passive_detected:
                     queue.pop(idx)
                     tag = "P1" if team == 1 else "P2"
                     color = LOG_COLOR_P1 if team == 1 else LOG_COLOR_P2
-                    # Prepend tag to make it consistent with other log lines
-                    self.log(f"{tag} : {stripped}", color, time_elapsed=self.cumulative_time)
+                    if not self._is_passive_logging_mode():
+                        continue
+                    self._ensure_balance_counters()
+                    self.passive_trigger_count += 1
+                    self.log(f"{tag} : Passive - {passive_message}", color, time_elapsed=self.cumulative_time)
                     continue
                 if "uses" in line:
                     if len(queue) - idx < 3:
