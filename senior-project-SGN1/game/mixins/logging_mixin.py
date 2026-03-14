@@ -189,15 +189,15 @@ class GameMainLoggingMixin:
 
     def log(self, text: str, color=(0, 0, 0), time_elapsed=0.0, **fields) -> None:
         """Append a structured line to the game log."""
-        pinned_to_newest = getattr(self, "log_scroll", 0) == 0
+        pinned_to_top = getattr(self, "log_scroll", 0) == 0
         entry = self._log_default_entry(text=text, color=color, time_elapsed=float(time_elapsed or 0.0))
         entry.update(fields)
-        self.game_log.append(entry)
+        self.game_log.insert(0, entry)
         if len(self.game_log) > 500:  # prevent unbounded growth
-            self.game_log.pop(0)
+            self.game_log.pop()
 
-        # Keep auto-follow on the newest line only when the user was already at the bottom.
-        if pinned_to_newest:
+        # Keep auto-follow on the newest line only when the user was already pinned there.
+        if pinned_to_top:
             self.log_scroll = 0
 
     def log_event(self, event: str, **kwargs) -> None:
@@ -265,7 +265,6 @@ class GameMainLoggingMixin:
                     time_elapsed=time_elapsed,
                     game=int(kwargs.get('game', getattr(self, 'current_game', 1))),
                 )
-                self.log(f"GAME : {GAME_BAR}", tag_color("GAME"), time_elapsed=time_elapsed)
             return self.log(
                 f"MATCH : {message}",
                 tag_color("MATCH"),
@@ -286,12 +285,12 @@ class GameMainLoggingMixin:
             p1_matches = kwargs.get("p1_matches", 0)
             p2_matches = kwargs.get("p2_matches", 0)
 
-            self.log(f"GAME : {GAME_BAR}", tag_color("GAME"), time_elapsed=time_elapsed)
+            self.log(f"GAME : Game {game_number} ends", tag_color("GAME"), time_elapsed=time_elapsed)
             self.log(f"SUMMARY : Game winner -> {winner}", tag_color("SUMMARY"), time_elapsed=time_elapsed, winner=winner)
             self.log(f"SUMMARY : P1 won {p1_matches} matches", tag_color("SUMMARY"), time_elapsed=time_elapsed)
             self.log(f"SUMMARY : P2 won {p2_matches} matches", tag_color("SUMMARY"), time_elapsed=time_elapsed)
             self.log(f"SUMMARY : Game {game_number} finished", tag_color("SUMMARY"), time_elapsed=time_elapsed)
-            self.log(f"GAME : Game {game_number} ends", tag_color("GAME"), time_elapsed=time_elapsed)
+            self.log(f"GAME : {GAME_BAR}", tag_color("GAME"), time_elapsed=time_elapsed)
             return
         elif event == "move":
             team = int(kwargs.get("team") or 0)
@@ -386,20 +385,12 @@ class GameMainLoggingMixin:
             event_fields.update({"team": team, "class": actor, "position": location, "action_type": "ko", "target_class": actor})
         elif event == "match_end":
             tag = "SUMMARY"
-            winner = kwargs.get("winner", "")
-            p1_rounds = int(kwargs.get("p1_rounds", 0) or 0)
-            p2_rounds = int(kwargs.get("p2_rounds", 0) or 0)
-            message = ("Match result -> {winner} wins ({p1}-{p2} rounds)".format(
-                winner=winner,
-                p1=p1_rounds,
-                p2=p2_rounds,
-            ))
             event_fields.update({
                 "action_type": "match_end",
-                "winner": winner,
+                "winner": kwargs.get("winner", ""),
                 "duration": float(kwargs.get("time_elapsed", 0.0) or 0.0),
-                "p1_rounds": p1_rounds,
-                "p2_rounds": p2_rounds,
+                "p1_rounds": int(kwargs.get("p1_rounds", 0) or 0),
+                "p2_rounds": int(kwargs.get("p2_rounds", 0) or 0),
                 "objective_control_p1": int(getattr(self, "obj_control_team1", 0) or 0),
                 "objective_control_p2": int(getattr(self, "obj_control_team2", 0) or 0),
             })
@@ -789,8 +780,8 @@ class GameMainLoggingMixin:
             for line in self._wrap_text_to_width(str(text), max_width):
                 wrapped.append((line, color, timestamp))
 
-        # Keep storage chronological, but render in reverse-display order.
-        return list(reversed(wrapped))
+        # Keep list order as-is so index 0 (newest) renders at the top.
+        return wrapped
 
     def _calc_log_geometry(self, total_log_lines: int | None = None):
         """Return a dict with log panel & scrollbar geometry and paging info."""
@@ -819,8 +810,7 @@ class GameMainLoggingMixin:
         content_width = max(0, track_rect.x - content_x - 4)
         total_lines = total_log_lines if total_log_lines is not None else len(self.game_log)
 
-        # Compute scroll bounds
-        # With chronological order, max_scroll is last possible start index
+        # Compute scroll bounds (0 = newest/top, max_scroll = oldest reachable start)
         max_scroll = max(0, total_lines - max_lines)
 
         # Thumb size proportional to visible fraction; enforce a minimum
@@ -831,11 +821,11 @@ class GameMainLoggingMixin:
             thumb_h = max(24, int(track_rect.height * visible_fraction))
             thumb_h = min(thumb_h, track_rect.height)
 
-        # Thumb position maps log_scroll in [0, max_scroll] to y in [bottom, top].
+        # Thumb position maps log_scroll in [0, max_scroll] to y in [top, bottom].
         if max_scroll == 0:
             thumb_y = track_rect.y
         else:
-            t = 1.0 - (self.log_scroll / max_scroll)  # 0..1 (0 = top/oldest, 1 = bottom/newest)
+            t = self.log_scroll / max_scroll  # 0..1 (0 = newest/top, 1 = oldest/bottom)
             thumb_y = int(track_rect.y + t * (track_rect.height - thumb_h))
 
         thumb_rect = pygame.Rect(track_rect.x, thumb_y, track_rect.width, thumb_h)
@@ -984,10 +974,12 @@ class GameMainLoggingMixin:
         if event.type == pygame.MOUSEWHEEL:
             if geom["log_rect"].collidepoint(pygame.mouse.get_pos()):
                 if event.y > 0:
+                    # Wheel up -> move toward newest/top.
+                    self.log_scroll = max(0, self.log_scroll - self._log_scroll_step * abs(event.y))
+                elif event.y < 0:
+                    # Wheel down -> move toward older/bottom.
                     self.log_scroll = min(geom["max_scroll"],
                                           self.log_scroll + self._log_scroll_step * abs(event.y))
-                elif event.y < 0:
-                    self.log_scroll = max(0, self.log_scroll - self._log_scroll_step * abs(event.y))
                 return True
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -998,9 +990,9 @@ class GameMainLoggingMixin:
                 return True
             if geom["track_rect"].collidepoint(mx, my):
                 if my < geom["thumb_rect"].y:
-                    self.log_scroll = min(geom["max_scroll"], self.log_scroll + self._log_page_step)
-                elif my > geom["thumb_rect"].bottom:
                     self.log_scroll = max(0, self.log_scroll - self._log_page_step)
+                elif my > geom["thumb_rect"].bottom:
+                    self.log_scroll = min(geom["max_scroll"], self.log_scroll + self._log_page_step)
                 return True
 
         if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
@@ -1023,7 +1015,7 @@ class GameMainLoggingMixin:
                 self.log_scroll = 0
             else:
                 t = (new_thumb_y - track.y) / (track.height - thumb_h)
-                self.log_scroll = int(round((1.0 - t) * max_scroll))
+                self.log_scroll = int(round(t * max_scroll))
             return True
 
         return False

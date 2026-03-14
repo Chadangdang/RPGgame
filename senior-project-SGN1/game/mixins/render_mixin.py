@@ -745,7 +745,7 @@ class GameMainRenderMixin:
             title = self.font_s.render("Game Log", False, UI_TEXT)
             self.screen.blit(title, title.get_rect(topleft=(geom["header_rect"].x + 8, geom["header_rect"].y + 4)))
 
-            # log lines (newest pinned at bottom; older lines above)
+            # log lines (newest pinned at top; older lines below)
             x, y = geom["content_origin"]
             line_h = geom["line_h"]
             max_lines = geom["content_max_lines"]
@@ -758,7 +758,7 @@ class GameMainRenderMixin:
                 self.log_scroll = 0
 
             total_lines = len(wrapped_log_lines)
-            start = max(0, total_lines - max_lines - self.log_scroll)
+            start = max(0, self.log_scroll)
             end = min(total_lines, start + max_lines)
 
             for log_tuple in wrapped_log_lines[start:end]:

@@ -1,9 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/senior-project-SGN1/game/mixins/render_mixin.py b/senior-project-SGN1/game/mixins/render_mixin.py
-index 246d8eab54b6e6be1f3f95a4ae83a6af9e23023c..addfe97b1d82962b54c5c35dcce7c6eeff79a228 100644
+index addfe97b1d82962b54c5c35dcce7c6eeff79a228..0a2b3d8a2b4e8a546bd973d0c044e4328b92d73c 100644
 --- a/senior-project-SGN1/game/mixins/render_mixin.py
 +++ b/senior-project-SGN1/game/mixins/render_mixin.py
-@@ -723,64 +723,65 @@ class GameMainRenderMixin:
+@@ -723,64 +723,64 @@ class GameMainRenderMixin:
                      self.round_title_timer = 0
                      # self.game_state = 'attacking phase'
                      self.game_state = 'enemy action'
@@ -29,8 +29,8 @@ index 246d8eab54b6e6be1f3f95a4ae83a6af9e23023c..addfe97b1d82962b54c5c35dcce7c6ee
              title = self.font_s.render("Game Log", False, UI_TEXT)
              self.screen.blit(title, title.get_rect(topleft=(geom["header_rect"].x + 8, geom["header_rect"].y + 4)))
  
--            # log lines (chronological: oldest at top)
-+            # log lines (newest pinned at bottom; older lines above)
+-            # log lines (newest pinned at bottom; older lines above)
++            # log lines (newest pinned at top; older lines below)
              x, y = geom["content_origin"]
              line_h = geom["line_h"]
              max_lines = geom["content_max_lines"]
@@ -42,11 +42,10 @@ index 246d8eab54b6e6be1f3f95a4ae83a6af9e23023c..addfe97b1d82962b54c5c35dcce7c6ee
              if self.log_scroll < 0:
                  self.log_scroll = 0
  
--            start = self.log_scroll
--            end   = min(len(wrapped_log_lines), start + max_lines)
-+            total_lines = len(wrapped_log_lines)
-+            start = max(0, total_lines - max_lines - self.log_scroll)
-+            end = min(total_lines, start + max_lines)
+             total_lines = len(wrapped_log_lines)
+-            start = max(0, total_lines - max_lines - self.log_scroll)
++            start = max(0, self.log_scroll)
+             end = min(total_lines, start + max_lines)
  
              for log_tuple in wrapped_log_lines[start:end]:
                  text, color, _ = log_tuple
@@ -71,7 +70,6 @@ index 246d8eab54b6e6be1f3f95a4ae83a6af9e23023c..addfe97b1d82962b54c5c35dcce7c6ee
              # -----------------------------------------------------------------------
  
              if self._is_endgame_popup_active():
-                 self._render_endgame_popup(geom)
  
 EOF
 )
