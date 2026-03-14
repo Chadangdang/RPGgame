@@ -15,6 +15,8 @@ from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from datetime import datetime
 import os
 
+from game.balance import balance_controller
+
 AI_SELECTION_LABELS = (
     'Player Input',
     'Perfect Play AI',
@@ -335,35 +337,29 @@ class GameMainFlowUiMixin:
             ][self._pause_selected_idx]
             pygame.draw.rect(self.screen, YELLOW, selected_rect, 4)
 
-    def _is_new_stats_enabled(self) -> bool:
-        # Option 1 = Passive-Enhanced, Option 3 = Combined Mode
-        return bool(self._balance_option_states[1] or self._balance_option_states[3])
+    def _selected_balance_mode(self) -> str:
+        if self._balance_option_states[1]:
+            return balance_controller.PASSIVE
+        if self._balance_option_states[2]:
+            return balance_controller.WEAKNESS
+        if self._balance_option_states[3]:
+            return balance_controller.COMBINED
+        return balance_controller.BASELINE
 
     def _is_weakness_system_enabled(self) -> bool:
-        # Option 2 = Weakness-Based, Option 3 = Combined Mode
-        return bool(self._balance_option_states[2] or self._balance_option_states[3])
+        return self.settings.balance_mode in (balance_controller.WEAKNESS, balance_controller.COMBINED)
 
     def _fireball_burn_mode(self) -> str:
-        # Option 1 = Passive-Enhanced
-        # Option 3 = Combined Mode
-        if self._balance_option_states[3]:
+        if self.settings.balance_mode == balance_controller.COMBINED:
             return 'new_stats_weakness'
-        if self._balance_option_states[1]:
+        if self.settings.balance_mode == balance_controller.PASSIVE:
             return 'new_stats_only'
         return 'default'
 
     def _apply_new_stats_balance(self) -> None:
-        if not self._is_new_stats_enabled():
-            return
-
         for chara in Character.team1_list + Character.team2_list:
-            name = str(chara.template.get('display_name', '')).strip().lower()
-            if name == 'fighter':
-                chara.template['maxHP'] = 36
-                chara.template['curHP'] = 36
-            elif name == 'wizard':
-                chara.template['maxHP'] = 29
-                chara.template['curHP'] = 29
+            chara.template = balance_controller.adjust_template_stats(chara.template)
+            chara.movement = chara.template.get('movement', chara.movement)
 
     def screen1init(self):
 
@@ -400,6 +396,9 @@ class GameMainFlowUiMixin:
     def startMatch(self) -> None:
         self.currentMatch += 1
         self.cumulative_time = 0.0  
+
+        self.settings.balance_mode = self._selected_balance_mode()
+        balance_controller.load_balance_mode(self.settings.balance_mode)
 
         Character.setWeaknessSystem(self._is_weakness_system_enabled())
         Character.setFireballBurnMode(self._fireball_burn_mode())

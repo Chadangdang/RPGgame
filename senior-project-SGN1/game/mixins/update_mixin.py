@@ -14,6 +14,7 @@ import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from datetime import datetime
 import os
+from game.balance import balance_controller
 
 AI_SELECTION_LABELS = (
     'Player Input',
@@ -132,6 +133,10 @@ class GameMainUpdateMixin:
                                 continue
                             if event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_z, pygame.K_x):
                                 self._balance_option_states = [i == self._balance_keyboard_index for i in range(len(self._balance_option_states))]
+                                self.settings.balance_mode = self._selected_balance_mode()
+                                balance_controller.load_balance_mode(self.settings.balance_mode)
+                                print("=== BALANCE MODE CHANGED ===")
+                                print("Now using:", self.settings.balance_mode)
                                 continue
 
                     if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -161,6 +166,10 @@ class GameMainUpdateMixin:
                             if row_rect.collidepoint(event.pos):
                                 self._balance_option_states = [i == idx for i in range(len(self._balance_option_states))]
                                 self._balance_keyboard_index = idx
+                                self.settings.balance_mode = self._selected_balance_mode()
+                                balance_controller.load_balance_mode(self.settings.balance_mode)
+                                print("=== BALANCE MODE CHANGED ===")
+                                print("Now using:", self.settings.balance_mode)
                                 break
                         continue
                     if event.type in (pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION, pygame.MOUSEWHEEL):
