@@ -16,6 +16,7 @@ from datetime import datetime
 import os
 
 from game.balance import balance_controller
+from game.session_limits import SessionProgress, apply_match_result
 
 AI_SELECTION_LABELS = (
     'Player Input',
@@ -131,6 +132,14 @@ class GameMainFlowUiMixin:
         self._pending_ko_sources_by_name = {}
         self.log_scroll = 0
         self.currentMatch = 0
+        self.current_match = 0
+        self.current_game = 1
+        self.current_round = 1
+        self.game_p1_match_wins = 0
+        self.game_p2_match_wins = 0
+        self.total_games_p1 = 0
+        self.total_games_p2 = 0
+        self.session_over = False
         self.total_p1_win = 0
         self.total_p2_win = 0
         self.p1_round_wins = 0
@@ -138,7 +147,7 @@ class GameMainFlowUiMixin:
         self._current_map_label = ''
         self._char_snapshots = {}
         self._sb_dragging = False
-        self._series_summary_logged = False
+        self._game_summary_logged = False
 
         self.startMatch()
 
@@ -155,12 +164,20 @@ class GameMainFlowUiMixin:
         self._pending_ko_sources_by_name = {}
         self.log_scroll = 0
         self.currentMatch = 0
+        self.current_match = 0
+        self.current_game = 1
+        self.current_round = 1
+        self.game_p1_match_wins = 0
+        self.game_p2_match_wins = 0
+        self.total_games_p1 = 0
+        self.total_games_p2 = 0
+        self.session_over = False
         self.total_p1_win = 0
         self.total_p2_win = 0
         self.p1_round_wins = 0
         self.p2_round_wins = 0
         self._current_map_label = ''
-        self._series_summary_logged = False
+        self._game_summary_logged = False
         self._char_snapshots = {}
         self._next_map_id_override = None
         Cursor.state = 5
@@ -361,6 +378,36 @@ class GameMainFlowUiMixin:
             chara.template = balance_controller.adjust_template_stats(chara.template)
             chara.movement = chara.template.get('movement', chara.movement)
 
+    def _handle_completed_match(self, winner_label: str) -> dict:
+        """Update match/game/session counters and return transition flags."""
+        state = SessionProgress(
+            current_game=self.current_game,
+            current_match=self.current_match,
+            match_limit=self.match_limit,
+            game_limit=self.game_limit,
+            game_p1_match_wins=self.game_p1_match_wins,
+            game_p2_match_wins=self.game_p2_match_wins,
+            total_games_p1=self.total_games_p1,
+            total_games_p2=self.total_games_p2,
+            total_p1_win=self.total_p1_win,
+            total_p2_win=self.total_p2_win,
+        )
+        result = apply_match_result(state, winner_label)
+
+        self.current_game = state.current_game
+        self.current_match = state.current_match
+        self.currentMatch = state.current_match
+        self.game_p1_match_wins = state.game_p1_match_wins
+        self.game_p2_match_wins = state.game_p2_match_wins
+        self.total_games_p1 = state.total_games_p1
+        self.total_games_p2 = state.total_games_p2
+        self.total_p1_win = state.total_p1_win
+        self.total_p2_win = state.total_p2_win
+        if result['session_finished']:
+            self.session_over = True
+
+        return result
+
     def screen1init(self):
 
         self.game_limit = max(self._game_limit_min, min(self._game_limit_max, self.game_limit))
@@ -372,9 +419,17 @@ class GameMainFlowUiMixin:
         print(f'{AI_types[self.team1_ID]} vs {AI_types[self.team2_ID]}')
 
         self.currentMatch = 0
+        self.current_match = 0
+        self.current_game = 1
+        self.current_round = 1
+        self.game_p1_match_wins = 0
+        self.game_p2_match_wins = 0
+        self.total_games_p1 = 0
+        self.total_games_p2 = 0
+        self.session_over = False
         self.total_p1_win = 0
         self.total_p2_win = 0
-        self._series_summary_logged = False
+        self._game_summary_logged = False
 
         self.startMatch()
         
@@ -394,8 +449,15 @@ class GameMainFlowUiMixin:
         self.game_screen = 1
 
     def startMatch(self) -> None:
-        self.currentMatch += 1
-        self.cumulative_time = 0.0  
+        if self.session_over:
+            return
+
+        if self.current_match == 0:
+            self.log_event("game_start", game=self.current_game, time_elapsed=self.cumulative_time)
+
+        self.current_match += 1
+        self.currentMatch = self.current_match
+        self.cumulative_time = 0.0
 
         self.settings.balance_mode = self._selected_balance_mode()
         balance_controller.load_balance_mode(self.settings.balance_mode)
@@ -409,25 +471,12 @@ class GameMainFlowUiMixin:
         self._pending_ko_sources_by_name = {}
         self.p1_round_wins = 0
         self.p2_round_wins = 0
-        
+
         self.obj_control_team1 = 0
         self.obj_control_team2 = 0
 
         ai1_name = self._get_ai_label(self.team1_ID)
         ai2_name = self._get_ai_label(self.team2_ID)
-
-        if self.isAuto and self.currentMatch > self.game_limit:
-            print("Auto mode completed after " + str(self.game_limit) + " matches.")
-            print("Player 1: " + str(self.total_p1_win) + " wins")
-            print("Player 2: " + str(self.total_p2_win) + " wins")
-            if self.total_p1_win > self.total_p2_win:
-                self.game_state = 'win'
-            elif self.total_p2_win > self.total_p1_win:
-                self.game_state = 'lose'
-            else:
-                print("-Tie breaking Match-")
-            self._log_series_summary(total_matches_played=self.total_p1_win + self.total_p2_win)
-            return
 
         map_override = self._next_map_id_override
         self._next_map_id_override = None
@@ -467,7 +516,6 @@ class GameMainFlowUiMixin:
                         (pos[0], pos[1]),
                         "player" + str(i + 1), team=2)
 
-        # Apply optional balance tweaks from the Balance Tweaking page.
         self._apply_new_stats_balance()
 
         self.last_team1_ID = self.team1_ID
@@ -488,14 +536,12 @@ class GameMainFlowUiMixin:
         self.last_map_was_random = map_was_random
 
         self.field.positionCursorOnTeam1Character()
-        # Debug: show selected AI indices and available AI list
         try:
             print(f"Debug: AI_list length={len(GM.AI_list)}; AI names={[c.__name__ for c in GM.AI_list]}")
         except Exception:
             print("Debug: could not read GM.AI_list")
         print(f"Debug: selected team1_ID={self.team1_ID}, team2_ID={self.team2_ID}")
 
-        # Clamp indices to valid range to avoid IndexError during GameMaster.setTeams
         try:
             ai_count = len(GM.AI_list)
         except Exception:
@@ -506,7 +552,6 @@ class GameMainFlowUiMixin:
             self.team1_ID = 0
         if not isinstance(self.team2_ID, int) or self.team2_ID < 0 or self.team2_ID >= ai_count:
             print(f"Warning: team2_ID {self.team2_ID} out of range, defaulting to 0")
-        # Attempt to set teams; if it fails, fall back to human players and continue
         try:
             self.GameMaster.setTeams(self.team1_ID, self.team2_ID)
             self.GameMaster.team1.loadField(self.field)
@@ -523,39 +568,33 @@ class GameMainFlowUiMixin:
             except Exception as e2:
                 print(f"Fallback also failed: {e2}")
 
-        if self.GameMaster.isActiveAIHuman():
-            Cursor.state = 0
-        else:
-            Cursor.state = 6
+        Cursor.state = 0 if self.GameMaster.isActiveAIHuman() else 6
         Cursor.state = 5
         Cursor.selected_action = -1
 
         self.round = 1
+        self.current_round = 1
         self.round_title_timer = 0
         self.number_action = -1
         self.action_timer = 0
         self.p1_dom_count = 0
         self.p2_dom_count = 0
 
-        if self.isAuto:
-            self.action_delay = 0
-        else:
-            self.action_delay = 0.8
+        self.action_delay = 0 if self.isAuto else 0.8
 
         map_label = str(getattr(getattr(self.field, 'map', None), 'map_name', ''))
         if not map_label:
             map_label = 'Unknown'
         self._current_map_label = map_label
 
-        # ✅ Log match start with time_elapsed = 0.0 (since match just began)
         self.log_event('match_start',
-                       match=self.currentMatch,
+                       game=self.current_game,
+                       match=self.current_match,
                        map_label=map_label,
                        ai1=ai1_name,
                        ai2=ai2_name,
                        time_elapsed=self.cumulative_time)
 
-        # ✅ Log round begin with time_elapsed = 0.0
         self.log_event('round_begin',
                        round=self.round,
                        time_elapsed=self.cumulative_time)

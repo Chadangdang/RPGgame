@@ -189,6 +189,14 @@ class GameMainInitMixin:
 
         self.total_p1_win = 0
         self.total_p2_win = 0
+        self.total_games_p1 = 0
+        self.total_games_p2 = 0
+        self.game_p1_match_wins = 0
+        self.game_p2_match_wins = 0
+        self.current_game = 1
+        self.current_match = 0
+        self.current_round = 1
+        self.session_over = False
         self.p1_round_wins = 0
         self.p2_round_wins = 0
         self._current_map_label = ''
@@ -284,7 +292,7 @@ class GameMainInitMixin:
 
         self.GameMaster = GameMaster()
         self.currentMatch = 0
-        self._series_summary_logged = False
+        self._game_summary_logged = False
 
         # --- Match selection history (for restart functionality) ---
         self.last_team1_ID: int | None = None

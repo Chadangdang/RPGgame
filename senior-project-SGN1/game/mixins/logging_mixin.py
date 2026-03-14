@@ -165,12 +165,16 @@ class GameMainLoggingMixin:
         tag = "GAME"
         message = ""
         actor_health = 0  # Initialize actor's health
-        if event == "match_start":
+        if event == "game_start":
+            tag = "GAME"
+            message = f"Game {kwargs.get('game')} begins"
+        elif event == "match_start":
             tag = "GAME"
             self._ensure_balance_counters()
             self.passive_trigger_count = 0
             self.weakness_trigger_count = 0
-            message = ("Match {match} starts   Map: {map_label}   P1: {ai1}   P2: {ai2}".format(
+            message = ("Game {game} - Match {match} begins   Map: {map_label}   P1: {ai1}   P2: {ai2}".format(
+                game=kwargs.get("game"),
                 match=kwargs.get("match"),
                 map_label=kwargs.get("map_label", ""),
                 ai1=kwargs.get("ai1", ""),
@@ -182,6 +186,9 @@ class GameMainLoggingMixin:
         elif event == "round_end":
             tag = "ROUND"
             message = f"Round {kwargs.get('round')} ends"
+        elif event == "game_end":
+            tag = "GAME"
+            message = f"Game {kwargs.get('game')} ends"
         elif event == "move":
             team = kwargs.get("team")
             tag = "P1" if team == 1 else "P2"
@@ -268,11 +275,11 @@ class GameMainLoggingMixin:
             message = " ".join(part for part in message_parts if part)
             # --- SET ACTOR'S HEALTH TO 0 FOR KO EVENT ---
             actor_health = 0
-        elif event == "match_over":
+        elif event == "match_end":
             tag = "GAME"
             match_number = kwargs.get("match")
             if match_number is not None:
-                match_label = f"Match {match_number} over"
+                match_label = f"Match {match_number} ends"
             else:
                 match_label = "Match over"
             message = ("{match_label} - {winner} win ({p1}-{p2})".format(
@@ -284,19 +291,24 @@ class GameMainLoggingMixin:
         elif event == "summary_match":
             tag = "SUMMARY"
             message = ("Match {match}   Map: {map_label}".format(
+                game=kwargs.get("game"),
                 match=kwargs.get("match"),
                 map_label=kwargs.get("map_label", "")
             ))
         elif event == "summary_result":
             tag = "SUMMARY"
-            message = ("Result - P{winner} win ({p1}-{p2})".format(
+            message = ("Result - {winner} win ({p1}-{p2})".format(
                 winner=kwargs.get("winner", ""),
                 p1=kwargs.get("p1_rounds", 0),
                 p2=kwargs.get("p2_rounds", 0)
             ))
-        elif event == "summary_series":
+        elif event == "summary":
             tag = "SUMMARY"
-            message = ("Series - P1 matches = {p1}   P2 matches = {p2}".format(
+            message = kwargs.get("message", "")
+        elif event == "summary_game":
+            tag = "SUMMARY"
+            message = ("Game {game} - P1 matches = {p1}   P2 matches = {p2}".format(
+                game=kwargs.get("game", 0),
                 p1=kwargs.get("p1_matches", 0),
                 p2=kwargs.get("p2_matches", 0)
             ))
@@ -316,7 +328,7 @@ class GameMainLoggingMixin:
                 tag_color("GAME"),
                 time_elapsed=time_elapsed,
             )
-        elif event in {"round_end", "match_over"}:
+        elif event in {"round_end", "match_end"}:
             self._log_balance_summary(time_elapsed=time_elapsed)
 
     def _get_ai_label(self, team_id: int) -> str:
@@ -324,39 +336,24 @@ class GameMainLoggingMixin:
             return self._ai_type_labels[team_id]
         return 'Unknown'
 
-    def _log_series_summary(self, total_matches_played: int | None = None) -> None:
-        """Append a formatted summary of the overall series to the game log."""
-        if self._series_summary_logged:
+    def _log_session_summary(self) -> None:
+        """Append a formatted summary of the completed session to the game log."""
+        if self._game_summary_logged:
             return
 
-        calculated_total = self.total_p1_win + self.total_p2_win
-        if total_matches_played is None:
-            total_matches_played = self.currentMatch
-        total_matches_played = max(total_matches_played, calculated_total)
-
-        ai1_name = self._get_ai_label(self.team1_ID)
-        ai2_name = self._get_ai_label(self.team2_ID)
-
-        if self.total_p1_win > self.total_p2_win:
+        if self.total_games_p1 > self.total_games_p2:
             winner = "P1"
-        elif self.total_p2_win > self.total_p1_win:
+        elif self.total_games_p2 > self.total_games_p1:
             winner = "P2"
         else:
-            winner = "TIE"
+            winner = "Draw"
 
-        lines = [
-            f"GAME : WINNER = {winner}",
-            f"GAME : P1 total matches = {self.total_p1_win}   P2 total matches = {self.total_p2_win}",
-            f"GAME : Total matches played = {total_matches_played}",
-            f"GAME : P1 = {ai1_name}   P2 = {ai2_name}",
-            "GAME : SERIES OVER - FINAL RESULT",
-            "-------------------------------------"
-        ]
+        self.log_event("summary", message="Session finished")
+        self.log_event("summary", message=f"P1 won {self.total_games_p1} games")
+        self.log_event("summary", message=f"P2 won {self.total_games_p2} games")
+        self.log_event("summary", message=f"Overall winner -> {winner}")
 
-        for line in reversed(lines):
-            self.log(line, LOG_COLOR_GAME)
-
-        self._series_summary_logged = True
+        self._game_summary_logged = True
 
     def _init_character_snapshots(self) -> None:
         self._char_snapshots: dict[int, dict] = {}

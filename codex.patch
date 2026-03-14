@@ -1,410 +1,72 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/senior-project-SGN1/game/mixins/logging_mixin.py b/senior-project-SGN1/game/mixins/logging_mixin.py
-index d08bdfda721236d862c1612b1d6f59fe15b5aca9..0b10e492f1fb89375cdc8c9b2bb2e09eb23164d1 100644
---- a/senior-project-SGN1/game/mixins/logging_mixin.py
-+++ b/senior-project-SGN1/game/mixins/logging_mixin.py
-@@ -1,161 +1,248 @@
- import random
- import pygame
- import sys
- from Constants import *
- from Field import Field
- from Character import Character
- from Cursor import *
- import numpy as np
- import AI
- from GameMaster import GameMaster
- import GameMaster as GM
- from MapData import MapData
- import openpyxl
- from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
- from datetime import datetime
- import os
-+from game.balance import balance_controller
- 
- AI_SELECTION_LABELS = (
-     'Player Input',
-     'Perfect Play AI',
-     'Random AI',
-     'Personality Cores AI',
-     'Disable AI'
- )
- 
- 
- 
- # === Board placement (top-left of the 640x640 grid) ===
- # Lower this to move the whole board (and its A-H / 1-8 labels) higher on screen.
- BOARD_POS_X = WIDTH // 2 - 320
- BOARD_POS_Y = 40
- 
- # === Game Log placement (anchored under the board) ===
- LOG_W = WIDTH - 40              # full-ish width (tweak as you like)
- LOG_H = 270                     # panel height (was 280)
- LOG_X = 20                      # left margin
- LOG_Y = BOARD_POS_Y + 700
- 
- # --- Cream UI colors for the bottom log panel (like your screenshot) ---
- UI_PANEL  = (251, 247, 242)   # panel fill
- UI_HEADER = (233, 226, 214)   # header strip
- UI_BORDER = (30, 30, 30)      # dark border
- UI_TEXT   = (20, 20, 20)      # text
- 
- LOG_COLOR_GAME    = (20, 20, 20)      # black
- LOG_COLOR_ROUND   = (255, 165, 0)     # orange
- LOG_COLOR_SUMMARY = (22, 138, 36)     # green
- LOG_COLOR_P1      = (54, 92, 168)     # blue
- LOG_COLOR_P2      = (178, 64, 64)     # red
- 
- # --- Scrollbar colors ---
- SB_TRACK       = (220, 213, 200)
- SB_THUMB       = (160, 150, 135)
- SB_THUMB_HOVER = (145, 135, 120)
- SB_THUMB_DRAG  = (130, 120, 105)
- 
- class GameMainLoggingMixin:
-+    def get_balance_mode(self) -> str:
-+        """Return the selected balance mode, defaulting to BASELINE."""
-+        settings = getattr(self, "settings", None)
-+        mode = getattr(settings, "balance_mode", balance_controller.BASELINE)
-+        mode_name = str(mode).strip().upper()
-+        valid_modes = {
-+            balance_controller.BASELINE,
-+            balance_controller.PASSIVE,
-+            balance_controller.WEAKNESS,
-+            balance_controller.COMBINED,
-+        }
-+        return mode_name if mode_name in valid_modes else balance_controller.BASELINE
+diff --git a/senior-project-SGN1/tests/test_session_limits.py b/senior-project-SGN1/tests/test_session_limits.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..7fb1d0db2690fa5d5cd4a99b7be89c4f3aee7567
+--- /dev/null
++++ b/senior-project-SGN1/tests/test_session_limits.py
+@@ -0,0 +1,62 @@
++import unittest
 +
-+    def _is_passive_logging_mode(self) -> bool:
-+        return self.get_balance_mode() in {balance_controller.PASSIVE, balance_controller.COMBINED}
++from game.session_limits import SessionProgress, apply_match_result
 +
-+    def _is_weakness_logging_mode(self) -> bool:
-+        return self.get_balance_mode() in {balance_controller.WEAKNESS, balance_controller.COMBINED}
 +
-+    def _ensure_balance_counters(self) -> None:
-+        if not hasattr(self, "passive_trigger_count"):
-+            self.passive_trigger_count = 0
-+        if not hasattr(self, "weakness_trigger_count"):
-+            self.weakness_trigger_count = 0
-+
-+    def _log_balance_summary(self, time_elapsed: float = 0.0) -> None:
-+        self._ensure_balance_counters()
-+        mode = self.get_balance_mode()
-+        if mode == balance_controller.BASELINE:
-+            return
-+        if mode in {balance_controller.PASSIVE, balance_controller.COMBINED}:
-+            self.log(
-+                f"SUMMARY : Passive effects triggered {self.passive_trigger_count} times",
-+                LOG_COLOR_SUMMARY,
-+                time_elapsed=time_elapsed,
-+            )
-+        if mode in {balance_controller.WEAKNESS, balance_controller.COMBINED}:
-+            self.log(
-+                f"SUMMARY : Weakness bonuses triggered {self.weakness_trigger_count} times",
-+                LOG_COLOR_SUMMARY,
-+                time_elapsed=time_elapsed,
-+            )
-+
-+    def _find_character_by_name(self, display_name: str):
-+        for chara in Character.team1_list + Character.team2_list:
-+            if chara.template.get("display_name", "") == display_name:
-+                return chara
-+        return None
-+
-+    def _log_weakness_multiplier_for_attack(self, team: int, actor: str, target: str, time_elapsed: float = 0.0) -> None:
-+        if not self._is_weakness_logging_mode():
-+            return
-+        self._ensure_balance_counters()
-+        actor_chara = self._find_character_by_name(actor)
-+        target_chara = self._find_character_by_name(target)
-+        if not actor_chara or not target_chara:
-+            return
-+
-+        multiplier = balance_controller.weakness_mode.weakness_multiplier(
-+            actor_chara.template.get("display_name", ""),
-+            target_chara.template.get("display_name", ""),
++class SessionLimitTests(unittest.TestCase):
++    def make_state(self):
++        return SessionProgress(
++            current_game=1,
++            current_match=1,
++            match_limit=3,
++            game_limit=2,
++            game_p1_match_wins=0,
++            game_p2_match_wins=0,
++            total_games_p1=0,
++            total_games_p2=0,
++            total_p1_win=0,
++            total_p2_win=0,
 +        )
-+        if multiplier > 1.0:
-+            self.log(
-+                f"{'P1' if team == 1 else 'P2'} : Weakness multiplier applied ({multiplier:.1f}x)",
-+                LOG_COLOR_P1 if team == 1 else LOG_COLOR_P2,
-+                time_elapsed=time_elapsed,
-+            )
-+            self.weakness_trigger_count += 1
-+        elif multiplier < 1.0:
-+            self.log(
-+                f"{'P1' if team == 1 else 'P2'} : Resistance applied ({multiplier:.1f}x)",
-+                LOG_COLOR_P1 if team == 1 else LOG_COLOR_P2,
-+                time_elapsed=time_elapsed,
-+            )
-+            self.weakness_trigger_count += 1
 +
-     def log(self, text: str, color=(0, 0, 0), time_elapsed=0.0) -> None:
-         """Append a line to the game log."""
-         # Store tuple: (text, color, time_elapsed)
-         self.game_log.insert(0, (text, color, time_elapsed))
-         if len(self.game_log) > 500:  # prevent unbounded growth
-             self.game_log.pop()
- 
-     def log_event(self, event: str, **kwargs) -> None:
-         """Build and append a formatted log entry for a structured event."""
-         tag_labels = {
-             "GAME": "GAME : ",
-             "ROUND": "ROUND : ",
-             "P1": "P1 : ",
-             "P2": "P2 : ",
-             "SUMMARY": "SUMMARY : "
-         }
-         def tag_color(tag: str) -> tuple[int, int, int]:
-             return {
-                 "GAME": LOG_COLOR_GAME,
-                 "ROUND": LOG_COLOR_ROUND,
-                 "SUMMARY": LOG_COLOR_SUMMARY,
-                 "P1": LOG_COLOR_P1,
-                 "P2": LOG_COLOR_P2,
-             }.get(tag, UI_TEXT)
-         def board_label(grid: tuple[int, int] | None) -> str:
-             if grid is None:
-                 return ""
-             row, col = grid
-             return f"{chr(ord('A') + col)}{GRID_ROWS - row}"
-         tag = "GAME"
-         message = ""
-         actor_health = 0  # Initialize actor's health
-         if event == "match_start":
-             tag = "GAME"
-+            self._ensure_balance_counters()
-+            self.passive_trigger_count = 0
-+            self.weakness_trigger_count = 0
-             message = ("Match {match} starts   Map: {map_label}   P1: {ai1}   P2: {ai2}".format(
-                 match=kwargs.get("match"),
-                 map_label=kwargs.get("map_label", ""),
-                 ai1=kwargs.get("ai1", ""),
-                 ai2=kwargs.get("ai2", "")
-             ))
-         elif event == "round_begin":
-             tag = "ROUND"
-             message = f"Round {kwargs.get('round')} begins"
-         elif event == "round_end":
-             tag = "ROUND"
-             message = f"Round {kwargs.get('round')} ends"
-         elif event == "move":
-             team = kwargs.get("team")
-             tag = "P1" if team == 1 else "P2"
-             actor = kwargs.get("actor", "")
-             start = board_label(kwargs.get("start"))
-             end = board_label(kwargs.get("end"))
-             distance = kwargs.get("distance", 0)
-             message = f"{actor} moves {start} -> {end} ({distance} tiles)"
-             # --- GET ACTOR'S HEALTH FOR MOVE EVENT ---
-             for chara in Character.team1_list + Character.team2_list:
-                 if chara.template.get("display_name", "") == actor:
-                     actor_health = chara.template.get("curHP", 0)
-                     break
-         elif event == "attack":
-             team = kwargs.get("team")
-             tag = "P1" if team == 1 else "P2"
-             actor = kwargs.get("actor", "")
-             target = kwargs.get("target", "")
-             action = kwargs.get("action", "")
-             amount = kwargs.get("amount", 0)
-             hp_before = kwargs.get("hp_before", 0)
-             hp_cur = kwargs.get("hp_cur", 0)
-             hp_max = kwargs.get("hp_max", 0)
-             target_position = kwargs.get("target_position", "")  # ✅ Add this line
-             message = (f"{actor} attacks {target} with \"{action}\" - hit for {amount} "
-                     f"(HP before: {hp_before}, after: {hp_cur}/{hp_max})")
-             if target_position:
-                 message += f" at {target_position}"  # ✅ Append position to message
-             # --- GET ACTOR'S HEALTH FOR ATTACK EVENT ---
-             for chara in Character.team1_list + Character.team2_list:
-                 if chara.template.get("display_name", "") == actor:
-                     actor_health = chara.template.get("curHP", 0)
-                     break
-+            self._log_weakness_multiplier_for_attack(
-+                team=team,
-+                actor=actor,
-+                target=target,
-+                time_elapsed=kwargs.get("time_elapsed", 0.0),
-+            )
-         elif event == "heal":
-             team = kwargs.get("team")
-             tag = "P1" if team == 1 else "P2"
-             actor = kwargs.get("actor", "")
-             target = kwargs.get("target", "")
-             action = kwargs.get("action", "")
-             amount = kwargs.get("amount", 0)
-             cur = kwargs.get("hp_cur", 0)
-             max_hp = kwargs.get("hp_max", 0)
-             message = (f"{actor} uses \"{action}\" on {target} - +{amount}"
-                        f" (HP {cur}/{max_hp})")
-             # --- GET ACTOR'S HEALTH FOR HEAL EVENT ---
-             for chara in Character.team1_list + Character.team2_list:
-                 if chara.template.get("display_name", "") == actor:
-                     actor_health = chara.template.get("curHP", 0)
-                     break
-         elif event == "pass":
-             team = kwargs.get("team")
-             tag = "P1" if team == 1 else "P2"
-             message = "Pass turn"
-             # For pass events, we don't have a specific unit name, so we leave actor_health as 0.
-             actor_health = 0
-         elif event == "ko":
-             team = kwargs.get("team")
-             tag = "P1" if team == 1 else "P2"
-@@ -201,50 +288,58 @@ class GameMainLoggingMixin:
-                 map_label=kwargs.get("map_label", "")
-             ))
-         elif event == "summary_result":
-             tag = "SUMMARY"
-             message = ("Result - P{winner} win ({p1}-{p2})".format(
-                 winner=kwargs.get("winner", ""),
-                 p1=kwargs.get("p1_rounds", 0),
-                 p2=kwargs.get("p2_rounds", 0)
-             ))
-         elif event == "summary_series":
-             tag = "SUMMARY"
-             message = ("Series - P1 matches = {p1}   P2 matches = {p2}".format(
-                 p1=kwargs.get("p1_matches", 0),
-                 p2=kwargs.get("p2_matches", 0)
-             ))
-         else:
-             message = kwargs.get("message", "")
-         label = tag_labels.get(tag, "")
-         # --- NEW: Include actor's health in the log entry ---
-         # We'll modify the message to include the actor's health.
-         # This is a temporary fix; ideally, we would store this data separately.
-         if actor_health > 0 and event in ["move", "attack", "heal"]:
-             message = f"{message} (Actor HP: {actor_health})"
-         time_elapsed = kwargs.get("time_elapsed", 0.0)
-         self.log(f"{label}{message}", tag_color(tag), time_elapsed=time_elapsed)
-+        if event == "match_start":
-+            self.log(
-+                f"GAME : Balance Mode -> {self.get_balance_mode()}",
-+                tag_color("GAME"),
-+                time_elapsed=time_elapsed,
-+            )
-+        elif event in {"round_end", "match_over"}:
-+            self._log_balance_summary(time_elapsed=time_elapsed)
- 
-     def _get_ai_label(self, team_id: int) -> str:
-         if 0 <= team_id < len(self._ai_type_labels):
-             return self._ai_type_labels[team_id]
-         return 'Unknown'
- 
-     def _log_series_summary(self, total_matches_played: int | None = None) -> None:
-         """Append a formatted summary of the overall series to the game log."""
-         if self._series_summary_logged:
-             return
- 
-         calculated_total = self.total_p1_win + self.total_p2_win
-         if total_matches_played is None:
-             total_matches_played = self.currentMatch
-         total_matches_played = max(total_matches_played, calculated_total)
- 
-         ai1_name = self._get_ai_label(self.team1_ID)
-         ai2_name = self._get_ai_label(self.team2_ID)
- 
-         if self.total_p1_win > self.total_p2_win:
-             winner = "P1"
-         elif self.total_p2_win > self.total_p1_win:
-             winner = "P2"
-         else:
-             winner = "TIE"
-@@ -339,71 +434,78 @@ class GameMainLoggingMixin:
-                 row_num = int(label[1:])
-             except ValueError:
-                 return None
-             col_idx = ord(col_char) - ord('a')
-             row_idx = GRID_ROWS - row_num
-             if 0 <= row_idx < GRID_ROWS and 0 <= col_idx < GRID_COLS:
-                 return (row_idx, col_idx)
-             return None
- 
-         for team, queue in self._ai_pending_lines.items():
-             idx = 0
-             while idx < len(queue):
-                 line = queue[idx]
-                 stripped = line.strip()
-                 if "moves to grid" in line:
-                     queue.pop(idx)
-                     continue
-                 if "passes" in line:
-                     queue.pop(idx)
-                     self.log_event("pass", team=team, time_elapsed=self.cumulative_time)
-                     continue
-                 # Passive / status messages created by Character.attack() are added
-                 # as extra lines (indented). Detect common passive keywords and
-                 # convert them directly into colored log entries.
-                 passive_detected = False
-+                passive_message = stripped
-                 if stripped:
-                     low = stripped.lower()
--                    if ("burned" in low) or ("burn" in low and "dmg" in low):
--                        passive_detected = True
--                    if "movement reduced" in low or "movement reduced by" in low:
--                        passive_detected = True
--                    if "healed" in low and "from" in low:
--                        passive_detected = True
--                    if "reduces incoming damage" in low or "reduces incoming" in low:
--                        passive_detected = True
--                    if "heals" in low and "from" in low:
--                        passive_detected = True
--                    # Terrain/attack multipliers and similar passive messages
--                    if "deals" in low and ("x" in low or "more" in low or "due" in low or "damage" in low):
--                        passive_detected = True
-+                    passive_keywords = (
-+                        "lifesteal",
-+                        "burn",
-+                        "poison",
-+                        "shield",
-+                        "regen",
-+                        "damage reduction",
-+                    )
-+                    passive_detected = any(keyword in low for keyword in passive_keywords)
-+                    if not passive_detected:
-+                        passive_detected = (
-+                            "movement reduced" in low
-+                            or "healed" in low and "from" in low
-+                            or "heals" in low and "from" in low
-+                            or "reduces incoming" in low
-+                        )
-                 if passive_detected:
-                     queue.pop(idx)
-                     tag = "P1" if team == 1 else "P2"
-                     color = LOG_COLOR_P1 if team == 1 else LOG_COLOR_P2
--                    # Prepend tag to make it consistent with other log lines
--                    self.log(f"{tag} : {stripped}", color, time_elapsed=self.cumulative_time)
-+                    if not self._is_passive_logging_mode():
-+                        continue
-+                    self._ensure_balance_counters()
-+                    self.passive_trigger_count += 1
-+                    self.log(f"{tag} : Passive - {passive_message}", color, time_elapsed=self.cumulative_time)
-                     continue
-                 if "uses" in line:
-                     if len(queue) - idx < 3:
-                         break
-                     first = queue.pop(idx)
-                     second = queue.pop(idx)
-                     third = queue.pop(idx)
-                     actor, _, action_name = first.partition(" uses ")
-                     action_name = action_name.strip()
-                     target_info = second.replace("Target:", "").strip()
-                     grid_label = ''
-                     if '(' in target_info and target_info.endswith(')'):
-                         grid_label = target_info[target_info.rfind('(') + 1:-1]
-                     target_name = target_info.split(" (", 1)[0].strip()
-                     amount_str = third.replace("Result:", "").replace("damage", "").strip()
-                     try:
-                         amount = int(float(amount_str))
-                     except ValueError:
-                         amount = 0
- 
-                     target_id = None
-                     target_team = None
-                     grid_coords = parse_grid(grid_label)
-                     if grid_coords is not None:
-                         for cid, data in current_state.items():
++    def test_match_limit_stops_matches_within_game(self):
++        state = self.make_state()
++        state.current_match = 3
++        result = apply_match_result(state, 'P1')
++        self.assertTrue(result['game_finished'])
++        self.assertEqual(state.current_match, 0)
++        self.assertEqual(state.current_game, 2)
++
++    def test_game_winner_determined_by_match_wins(self):
++        state = self.make_state()
++        state.current_match = 3
++        state.game_p1_match_wins = 2
++        result = apply_match_result(state, 'P2')
++        self.assertEqual(result['game_winner'], 'P1')
++        self.assertEqual(state.total_games_p1, 1)
++
++    def test_game_limit_stops_total_games(self):
++        state = self.make_state()
++        state.current_game = 2
++        state.current_match = 3
++        state.game_p1_match_wins = 2
++        result = apply_match_result(state, 'P1')
++        self.assertTrue(result['session_finished'])
++
++    def test_session_winner_counts_games(self):
++        state = self.make_state()
++        state.current_match = 3
++        state.game_p1_match_wins = 2
++        apply_match_result(state, 'P1')
++
++        state.current_game = 2
++        state.current_match = 3
++        state.game_p1_match_wins = 0
++        state.game_p2_match_wins = 2
++        apply_match_result(state, 'P2')
++
++        self.assertEqual(state.total_games_p1, 1)
++        self.assertEqual(state.total_games_p2, 1)
++
++
++if __name__ == '__main__':
++    unittest.main()
  
 EOF
 )

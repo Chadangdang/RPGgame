@@ -196,7 +196,7 @@ class GameMainExportMixin:
                 target_health_after = ""
                 target_team = ""
 
-                # Track per-match objective control summary from series log lines
+                # Track per-match objective control summary from game log lines
                 if "SUMMARY : Team 1 Objective Control" in log_entry:
                     try:
                         match_data["obj_t1"] = safe_int(log_entry.split("=")[1].split("ticks")[0].strip())
@@ -224,8 +224,8 @@ class GameMainExportMixin:
                         pass
                     match_data["duration"] = max(match_data["duration"], time_elapsed)
 
-                elif "Match" in log_entry and "over" in log_entry and "win" in log_entry:
-                    event = "match_over"
+                elif "Match" in log_entry and "ends" in log_entry and "win" in log_entry:
+                    event = "match_end"
                     parsed_match = parse_match_number(log_entry)
                     if parsed_match is not None:
                         current_match = parsed_match

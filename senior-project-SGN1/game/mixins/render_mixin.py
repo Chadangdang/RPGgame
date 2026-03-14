@@ -279,7 +279,7 @@ class GameMainRenderMixin:
             self.screen.blit(auto_value_surface, auto_value_rect)
 
             # Game limit (above match limit)
-            game_label = self.font_menu_label.render("Game limit:", False, (0, 0, 0))
+            game_label = self.font_menu_label.render("Game Limit:", False, (0, 0, 0))
             self.screen.blit(game_label, (64, 915))
             pygame.draw.rect(self.screen, (245, 245, 245), self._game_limit_box_rect)
             pygame.draw.rect(self.screen, (0, 0, 0), self._game_limit_box_rect, 1)
@@ -297,7 +297,7 @@ class GameMainRenderMixin:
             pygame.draw.rect(self.screen, (0, 0, 0), knob_rect, 1)
 
             # Match limit
-            match_label = self.font_menu_label.render("Match limit:", False, (0, 0, 0))
+            match_label = self.font_menu_label.render("Match Limit:", False, (0, 0, 0))
             self.screen.blit(match_label, (64, 945))
             pygame.draw.rect(self.screen, (245, 245, 245), self._match_limit_box_rect)
             pygame.draw.rect(self.screen, (0, 0, 0), self._match_limit_box_rect, 1)

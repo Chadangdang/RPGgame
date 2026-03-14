@@ -926,37 +926,48 @@ class GameMainUpdateMixin:
 
                         if match_winner == 0 and next_round:
                             self.round += 1
+                            self.current_round = self.round
                             self.game_state = 'show round'
                             self.field.hover_cursor.show = True
                             self.log_event('round_begin', round=self.round)
                             self._init_character_snapshots()
 
-                        if match_winner == 1:
-                            self.total_p1_win += 1
+                        if match_winner in (1, 2):
+                            winner_label = 'P1' if match_winner == 1 else 'P2'
+                            completed_match = self.current_match
+
                             self.last_match_duration = self.cumulative_time
-                            self.log_event('match_over', match=self.currentMatch, winner='P1', p1_rounds=self.p1_round_wins, p2_rounds=self.p2_round_wins)
-                            self.log_event('summary_match', match=self.currentMatch, map_label=self._current_map_label)
-                            self.log_event('summary_result', winner=1, p1_rounds=self.p1_round_wins, p2_rounds=self.p2_round_wins)
-                            self.log_event('summary_series', p1_matches=self.total_p1_win, p2_matches=self.total_p2_win)
+                            self.log_event('match_end', game=self.current_game, match=self.current_match, winner=winner_label, p1_rounds=self.p1_round_wins, p2_rounds=self.p2_round_wins)
+                            self.log_event('summary_match', game=self.current_game, match=self.current_match, map_label=self._current_map_label)
+                            self.log_event('summary_result', winner=winner_label, p1_rounds=self.p1_round_wins, p2_rounds=self.p2_round_wins)
+
+                            progress = self._handle_completed_match(winner_label)
+                            self.log_event('summary_game', game=progress['completed_game'], p1_matches=progress['p1_matches_in_game'], p2_matches=progress['p2_matches_in_game'])
+
+                            if progress['game_finished']:
+                                completed_game = progress['completed_game']
+                                self.log_event('game_end', game=completed_game)
+                                self.log_event('summary', message=f'Game {completed_game} finished')
+                                self.log_event('summary', message=f"P1 won {progress['p1_matches_in_game']} matches")
+                                self.log_event('summary', message=f"P2 won {progress['p2_matches_in_game']} matches")
+                                self.log_event('summary', message=f"Game winner -> {progress['game_winner']}")
+
+                            if progress['session_finished']:
+                                self._log_session_summary()
+                                if self.total_games_p1 > self.total_games_p2:
+                                    self.game_state = 'win'
+                                elif self.total_games_p2 > self.total_games_p1:
+                                    self.game_state = 'lose'
+                                else:
+                                    self.game_state = 'win'
+                                return
+
                             if self.isAuto:
-                                print("Match " + str(self.currentMatch) + " result: Player 1 wins")
+                                print(f"Match {completed_match} result: Player {winner_label[-1]} wins")
                                 self.startMatch()
                                 return
-                            self.game_state = 'win'
-                            self._log_series_summary()
-                        elif match_winner == 2:
-                            self.total_p2_win += 1
-                            self.last_match_duration = self.cumulative_time
-                            self.log_event('match_over', match=self.currentMatch, winner='P2', p1_rounds=self.p1_round_wins, p2_rounds=self.p2_round_wins)
-                            self.log_event('summary_match', match=self.currentMatch, map_label=self._current_map_label)
-                            self.log_event('summary_result', winner=2, p1_rounds=self.p1_round_wins, p2_rounds=self.p2_round_wins)
-                            self.log_event('summary_series', p1_matches=self.total_p1_win, p2_matches=self.total_p2_win)
-                            if self.isAuto:
-                                print("Match " + str(self.currentMatch) + " result: Player 2 wins")
-                                self.startMatch()
-                                return
-                            self.game_state = 'lose'
-                            self._log_series_summary()
+
+                            self.game_state = 'win' if winner_label == 'P1' else 'lose'
 
                         self.number_action = -1
                         for chara in Character.team1_list + Character.team2_list:
