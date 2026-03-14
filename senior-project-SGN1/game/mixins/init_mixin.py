@@ -116,7 +116,7 @@ class GameMainInitMixin:
         self._model_left_x = 154
         self._model_right_x = 756
         self._model_visible_rows = 5
-        self._model_scroll_offset = 0
+        self._model_scroll_offset = [0, 0]
         self._model_scroll_dragging = [False, False]  # [left, right]
         self._model_scroll_drag_offset = [0, 0]
         self._model_sb_dragging_left = False
@@ -212,6 +212,7 @@ class GameMainInitMixin:
         self.font_s = pygame.font.Font('resource/font.ttf', 24)
         self.font_sm = pygame.font.Font('resource/font.ttf', 30)
         self.font_model_select = pygame.font.Font('resource/font.ttf', 25)
+        self.font_model_select_sub = pygame.font.Font('resource/font.ttf', 20)
         self.font_m = pygame.font.Font('resource/font.ttf', 48)
         self.font_l = pygame.font.Font('resource/font.ttf', 96)
         self.font_end_title = pygame.font.Font('resource/font.ttf', 74)
