@@ -44,10 +44,16 @@ UI_BORDER = (30, 30, 30)      # dark border
 UI_TEXT   = (20, 20, 20)      # text
 
 LOG_COLOR_GAME    = (20, 20, 20)      # black
+LOG_COLOR_MATCH   = (60, 60, 60)      # dark gray
 LOG_COLOR_ROUND   = (255, 165, 0)     # orange
-LOG_COLOR_SUMMARY = (22, 138, 36)     # green
 LOG_COLOR_P1      = (54, 92, 168)     # blue
 LOG_COLOR_P2      = (178, 64, 64)     # red
+LOG_COLOR_SYSTEM  = (120, 120, 120)   # medium gray
+LOG_COLOR_SUMMARY = (22, 138, 36)     # green
+LOG_COLOR_SESSION_SUMMARY = (75, 0, 130)  # indigo (#4B0082)
+
+GAME_BAR = "=" * 50
+MATCH_BAR = "-" * 30
 
 # --- Scrollbar colors ---
 SB_TRACK       = (220, 213, 200)
@@ -88,13 +94,13 @@ class GameMainLoggingMixin:
             return
         if mode in {balance_controller.PASSIVE, balance_controller.COMBINED}:
             self.log(
-                f"SUMMARY : Passive effects triggered {self.passive_trigger_count} times",
+                f"SUMMARY : Passive triggers -> {self.passive_trigger_count}",
                 LOG_COLOR_SUMMARY,
                 time_elapsed=time_elapsed,
             )
         if mode in {balance_controller.WEAKNESS, balance_controller.COMBINED}:
             self.log(
-                f"SUMMARY : Weakness bonuses triggered {self.weakness_trigger_count} times",
+                f"SUMMARY : Weakness bonuses -> {self.weakness_trigger_count}",
                 LOG_COLOR_SUMMARY,
                 time_elapsed=time_elapsed,
             )
@@ -120,18 +126,24 @@ class GameMainLoggingMixin:
         )
         if multiplier > 1.0:
             self.log(
-                f"{'P1' if team == 1 else 'P2'} : Weakness multiplier applied ({multiplier:.1f}x)",
-                LOG_COLOR_P1 if team == 1 else LOG_COLOR_P2,
+                f"SYSTEM : Weakness multiplier applied ({multiplier:.1f}x)",
+                LOG_COLOR_SYSTEM,
                 time_elapsed=time_elapsed,
             )
             self.weakness_trigger_count += 1
         elif multiplier < 1.0:
             self.log(
-                f"{'P1' if team == 1 else 'P2'} : Resistance applied ({multiplier:.1f}x)",
-                LOG_COLOR_P1 if team == 1 else LOG_COLOR_P2,
+                f"SYSTEM : Resistance applied ({multiplier:.1f}x)",
+                LOG_COLOR_SYSTEM,
                 time_elapsed=time_elapsed,
             )
             self.weakness_trigger_count += 1
+
+    def _format_system_message(self, message: str, team: int) -> str:
+        trimmed = str(message).strip()
+        if not trimmed:
+            return "System event"
+        return f"{trimmed} (P{team})"
 
     def log(self, text: str, color=(0, 0, 0), time_elapsed=0.0) -> None:
         """Append a line to the game log."""
@@ -144,18 +156,22 @@ class GameMainLoggingMixin:
         """Build and append a formatted log entry for a structured event."""
         tag_labels = {
             "GAME": "GAME : ",
+            "MATCH": "MATCH : ",
             "ROUND": "ROUND : ",
             "P1": "P1 : ",
             "P2": "P2 : ",
+            "SYSTEM": "SYSTEM : ",
             "SUMMARY": "SUMMARY : "
         }
         def tag_color(tag: str) -> tuple[int, int, int]:
             return {
                 "GAME": LOG_COLOR_GAME,
+                "MATCH": LOG_COLOR_MATCH,
                 "ROUND": LOG_COLOR_ROUND,
-                "SUMMARY": LOG_COLOR_SUMMARY,
                 "P1": LOG_COLOR_P1,
                 "P2": LOG_COLOR_P2,
+                "SYSTEM": LOG_COLOR_SYSTEM,
+                "SUMMARY": LOG_COLOR_SUMMARY,
             }.get(tag, UI_TEXT)
         def board_label(grid: tuple[int, int] | None) -> str:
             if grid is None:
@@ -164,22 +180,37 @@ class GameMainLoggingMixin:
             return f"{chr(ord('A') + col)}{GRID_ROWS - row}"
         tag = "GAME"
         message = ""
-        actor_health = 0  # Initialize actor's health
         if event == "game_start":
             tag = "GAME"
-            message = f"Game {kwargs.get('game')} begins"
+            time_elapsed = kwargs.get("time_elapsed", 0.0)
+            self.log(f"GAME : {GAME_BAR}", tag_color("GAME"), time_elapsed=time_elapsed)
+            self.log(f"GAME : Game {kwargs.get('game')} begins", tag_color("GAME"), time_elapsed=time_elapsed)
+            return
         elif event == "match_start":
-            tag = "GAME"
+            tag = "MATCH"
             self._ensure_balance_counters()
             self.passive_trigger_count = 0
             self.weakness_trigger_count = 0
-            message = ("Game {game} - Match {match} begins   Map: {map_label}   P1: {ai1}   P2: {ai2}".format(
-                game=kwargs.get("game"),
-                match=kwargs.get("match"),
-                map_label=kwargs.get("map_label", ""),
-                ai1=kwargs.get("ai1", ""),
-                ai2=kwargs.get("ai2", "")
-            ))
+            match_number = kwargs.get("match")
+            message = f"{MATCH_BAR[:8]} Match {match_number} {MATCH_BAR[:8]}"
+            time_elapsed = kwargs.get("time_elapsed", 0.0)
+            if match_number == 1:
+                self.log(
+                    "GAME : Map: {map_label} | P1: {ai1} vs P2: {ai2}".format(
+                        map_label=kwargs.get("map_label", ""),
+                        ai1=kwargs.get("ai1", ""),
+                        ai2=kwargs.get("ai2", ""),
+                    ),
+                    tag_color("GAME"),
+                    time_elapsed=time_elapsed,
+                )
+                self.log(
+                    f"GAME : Balance Mode -> {self.get_balance_mode()}",
+                    tag_color("GAME"),
+                    time_elapsed=time_elapsed,
+                )
+                self.log(f"GAME : {GAME_BAR}", tag_color("GAME"), time_elapsed=time_elapsed)
+            return self.log(f"MATCH : {message}", tag_color("MATCH"), time_elapsed=time_elapsed)
         elif event == "round_begin":
             tag = "ROUND"
             message = f"Round {kwargs.get('round')} begins"
@@ -187,8 +218,19 @@ class GameMainLoggingMixin:
             tag = "ROUND"
             message = f"Round {kwargs.get('round')} ends"
         elif event == "game_end":
-            tag = "GAME"
-            message = f"Game {kwargs.get('game')} ends"
+            time_elapsed = kwargs.get("time_elapsed", 0.0)
+            game_number = kwargs.get("game")
+            winner = kwargs.get("winner", "")
+            p1_matches = kwargs.get("p1_matches", 0)
+            p2_matches = kwargs.get("p2_matches", 0)
+
+            self.log(f"GAME : {GAME_BAR}", tag_color("GAME"), time_elapsed=time_elapsed)
+            self.log(f"SUMMARY : Game winner -> {winner}", tag_color("SUMMARY"), time_elapsed=time_elapsed)
+            self.log(f"SUMMARY : P1 won {p1_matches} matches", tag_color("SUMMARY"), time_elapsed=time_elapsed)
+            self.log(f"SUMMARY : P2 won {p2_matches} matches", tag_color("SUMMARY"), time_elapsed=time_elapsed)
+            self.log(f"SUMMARY : Game {game_number} finished", tag_color("SUMMARY"), time_elapsed=time_elapsed)
+            self.log(f"GAME : Game {game_number} ends", tag_color("GAME"), time_elapsed=time_elapsed)
+            return
         elif event == "move":
             team = kwargs.get("team")
             tag = "P1" if team == 1 else "P2"
@@ -196,12 +238,8 @@ class GameMainLoggingMixin:
             start = board_label(kwargs.get("start"))
             end = board_label(kwargs.get("end"))
             distance = kwargs.get("distance", 0)
-            message = f"{actor} moves {start} -> {end} ({distance} tiles)"
-            # --- GET ACTOR'S HEALTH FOR MOVE EVENT ---
-            for chara in Character.team1_list + Character.team2_list:
-                if chara.template.get("display_name", "") == actor:
-                    actor_health = chara.template.get("curHP", 0)
-                    break
+            tile_word = "tile" if distance == 1 else "tiles"
+            message = f"{actor} moves {start} -> {end} ({distance} {tile_word})"
         elif event == "attack":
             team = kwargs.get("team")
             tag = "P1" if team == 1 else "P2"
@@ -209,19 +247,7 @@ class GameMainLoggingMixin:
             target = kwargs.get("target", "")
             action = kwargs.get("action", "")
             amount = kwargs.get("amount", 0)
-            hp_before = kwargs.get("hp_before", 0)
-            hp_cur = kwargs.get("hp_cur", 0)
-            hp_max = kwargs.get("hp_max", 0)
-            target_position = kwargs.get("target_position", "")  # ✅ Add this line
-            message = (f"{actor} attacks {target} with \"{action}\" - hit for {amount} "
-                    f"(HP before: {hp_before}, after: {hp_cur}/{hp_max})")
-            if target_position:
-                message += f" at {target_position}"  # ✅ Append position to message
-            # --- GET ACTOR'S HEALTH FOR ATTACK EVENT ---
-            for chara in Character.team1_list + Character.team2_list:
-                if chara.template.get("display_name", "") == actor:
-                    actor_health = chara.template.get("curHP", 0)
-                    break
+            message = f"{actor} uses \"{action}\" on {target} -> {amount} dmg"
             self._log_weakness_multiplier_for_attack(
                 team=team,
                 actor=actor,
@@ -237,67 +263,37 @@ class GameMainLoggingMixin:
             amount = kwargs.get("amount", 0)
             cur = kwargs.get("hp_cur", 0)
             max_hp = kwargs.get("hp_max", 0)
-            message = (f"{actor} uses \"{action}\" on {target} - +{amount}"
-                       f" (HP {cur}/{max_hp})")
-            # --- GET ACTOR'S HEALTH FOR HEAL EVENT ---
-            for chara in Character.team1_list + Character.team2_list:
-                if chara.template.get("display_name", "") == actor:
-                    actor_health = chara.template.get("curHP", 0)
-                    break
+            message = f"{actor} heals {target} with \"{action}\" -> +{amount} HP ({cur}/{max_hp})"
         elif event == "pass":
             team = kwargs.get("team")
             tag = "P1" if team == 1 else "P2"
             message = "Pass turn"
-            # For pass events, we don't have a specific unit name, so we leave actor_health as 0.
-            actor_health = 0
         elif event == "ko":
             team = kwargs.get("team")
             tag = "P1" if team == 1 else "P2"
             actor = kwargs.get("actor", "")
             location = board_label(kwargs.get("location"))
-            hp_max = kwargs.get("hp_max", 0)
             by_actor = kwargs.get("by_actor")
             by_action = kwargs.get("by_action")
-            message_parts = [f"{actor} is KO"]
+            source = by_actor or "Unknown"
+            if by_action:
+                source = f"{source} ({by_action})"
+            message = f"{actor} KO'd by {source}"
             if location:
-                message_parts[-1] += f" at {location}"
-            detail_parts: list[str] = []
-            if by_actor and by_action:
-                detail_parts.append(f"by {by_actor} using \"{by_action}\"")
-            elif by_actor:
-                detail_parts.append(f"by {by_actor}")
-            elif by_action:
-                detail_parts.append(f"by \"{by_action}\"")
-            if detail_parts:
-                message_parts.append(" ".join(detail_parts))
-            if hp_max:
-                message_parts.append(f"(HP 0/{hp_max})")
-            message = " ".join(part for part in message_parts if part)
-            # --- SET ACTOR'S HEALTH TO 0 FOR KO EVENT ---
-            actor_health = 0
+                message += f" at {location}"
         elif event == "match_end":
-            tag = "GAME"
-            match_number = kwargs.get("match")
-            if match_number is not None:
-                match_label = f"Match {match_number} ends"
-            else:
-                match_label = "Match over"
-            message = ("{match_label} - {winner} win ({p1}-{p2})".format(
-                match_label=match_label,
+            tag = "SUMMARY"
+            message = ("Match result -> {winner} wins ({p1}-{p2} rounds)".format(
                 winner=kwargs.get("winner", ""),
                 p1=kwargs.get("p1_rounds", 0),
                 p2=kwargs.get("p2_rounds", 0)
             ))
         elif event == "summary_match":
             tag = "SUMMARY"
-            message = ("Match {match}   Map: {map_label}".format(
-                game=kwargs.get("game"),
-                match=kwargs.get("match"),
-                map_label=kwargs.get("map_label", "")
-            ))
+            message = f"Match {kwargs.get('match')} ends"
         elif event == "summary_result":
             tag = "SUMMARY"
-            message = ("Result - {winner} win ({p1}-{p2})".format(
+            message = ("Match result -> {winner} wins ({p1}-{p2} rounds)".format(
                 winner=kwargs.get("winner", ""),
                 p1=kwargs.get("p1_rounds", 0),
                 p2=kwargs.get("p2_rounds", 0)
@@ -307,28 +303,17 @@ class GameMainLoggingMixin:
             message = kwargs.get("message", "")
         elif event == "summary_game":
             tag = "SUMMARY"
-            message = ("Game {game} - P1 matches = {p1}   P2 matches = {p2}".format(
-                game=kwargs.get("game", 0),
-                p1=kwargs.get("p1_matches", 0),
-                p2=kwargs.get("p2_matches", 0)
-            ))
+            p1_matches = kwargs.get("p1_matches", 0)
+            p2_matches = kwargs.get("p2_matches", 0)
+            winner = "P1" if p1_matches > p2_matches else "P2" if p2_matches > p1_matches else "Draw"
+            message = f"Game result -> {winner} wins ({p1_matches}-{p2_matches} matches)"
         else:
             message = kwargs.get("message", "")
         label = tag_labels.get(tag, "")
-        # --- NEW: Include actor's health in the log entry ---
-        # We'll modify the message to include the actor's health.
-        # This is a temporary fix; ideally, we would store this data separately.
-        if actor_health > 0 and event in ["move", "attack", "heal"]:
-            message = f"{message} (Actor HP: {actor_health})"
         time_elapsed = kwargs.get("time_elapsed", 0.0)
-        self.log(f"{label}{message}", tag_color(tag), time_elapsed=time_elapsed)
-        if event == "match_start":
-            self.log(
-                f"GAME : Balance Mode -> {self.get_balance_mode()}",
-                tag_color("GAME"),
-                time_elapsed=time_elapsed,
-            )
-        elif event in {"round_end", "match_end"}:
+        if message:
+            self.log(f"{label}{message}", tag_color(tag), time_elapsed=time_elapsed)
+        if event in {"round_end", "match_end"}:
             self._log_balance_summary(time_elapsed=time_elapsed)
 
     def _get_ai_label(self, team_id: int) -> str:
@@ -348,10 +333,10 @@ class GameMainLoggingMixin:
         else:
             winner = "Draw"
 
-        self.log_event("summary", message="Session finished")
-        self.log_event("summary", message=f"P1 won {self.total_games_p1} games")
-        self.log_event("summary", message=f"P2 won {self.total_games_p2} games")
-        self.log_event("summary", message=f"Overall winner -> {winner}")
+        self.log(f"SUMMARY : P1 won {self.total_games_p1} games", LOG_COLOR_SESSION_SUMMARY)
+        self.log(f"SUMMARY : P2 won {self.total_games_p2} games", LOG_COLOR_SESSION_SUMMARY)
+        self.log(f"SUMMARY : Overall winner -> {winner}", LOG_COLOR_SESSION_SUMMARY)
+        self.log("SUMMARY : Session finished", LOG_COLOR_SESSION_SUMMARY)
 
         self._game_summary_logged = True
 
@@ -474,13 +459,12 @@ class GameMainLoggingMixin:
                         )
                 if passive_detected:
                     queue.pop(idx)
-                    tag = "P1" if team == 1 else "P2"
-                    color = LOG_COLOR_P1 if team == 1 else LOG_COLOR_P2
                     if not self._is_passive_logging_mode():
                         continue
                     self._ensure_balance_counters()
                     self.passive_trigger_count += 1
-                    self.log(f"{tag} : Passive - {passive_message}", color, time_elapsed=self.cumulative_time)
+                    system_message = self._format_system_message(passive_message, team)
+                    self.log(f"SYSTEM : {system_message}", LOG_COLOR_SYSTEM, time_elapsed=self.cumulative_time)
                     continue
                 if "uses" in line:
                     if len(queue) - idx < 3:

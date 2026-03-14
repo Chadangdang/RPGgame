@@ -1,72 +1,72 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/senior-project-SGN1/tests/test_session_limits.py b/senior-project-SGN1/tests/test_session_limits.py
-new file mode 100644
-index 0000000000000000000000000000000000000000..7fb1d0db2690fa5d5cd4a99b7be89c4f3aee7567
---- /dev/null
-+++ b/senior-project-SGN1/tests/test_session_limits.py
-@@ -0,0 +1,62 @@
-+import unittest
-+
-+from game.session_limits import SessionProgress, apply_match_result
-+
-+
-+class SessionLimitTests(unittest.TestCase):
-+    def make_state(self):
-+        return SessionProgress(
-+            current_game=1,
-+            current_match=1,
-+            match_limit=3,
-+            game_limit=2,
-+            game_p1_match_wins=0,
-+            game_p2_match_wins=0,
-+            total_games_p1=0,
-+            total_games_p2=0,
-+            total_p1_win=0,
-+            total_p2_win=0,
-+        )
-+
-+    def test_match_limit_stops_matches_within_game(self):
-+        state = self.make_state()
-+        state.current_match = 3
-+        result = apply_match_result(state, 'P1')
-+        self.assertTrue(result['game_finished'])
-+        self.assertEqual(state.current_match, 0)
-+        self.assertEqual(state.current_game, 2)
-+
-+    def test_game_winner_determined_by_match_wins(self):
-+        state = self.make_state()
-+        state.current_match = 3
-+        state.game_p1_match_wins = 2
-+        result = apply_match_result(state, 'P2')
-+        self.assertEqual(result['game_winner'], 'P1')
-+        self.assertEqual(state.total_games_p1, 1)
-+
-+    def test_game_limit_stops_total_games(self):
-+        state = self.make_state()
-+        state.current_game = 2
-+        state.current_match = 3
-+        state.game_p1_match_wins = 2
-+        result = apply_match_result(state, 'P1')
-+        self.assertTrue(result['session_finished'])
-+
-+    def test_session_winner_counts_games(self):
-+        state = self.make_state()
-+        state.current_match = 3
-+        state.game_p1_match_wins = 2
-+        apply_match_result(state, 'P1')
-+
-+        state.current_game = 2
-+        state.current_match = 3
-+        state.game_p1_match_wins = 0
-+        state.game_p2_match_wins = 2
-+        apply_match_result(state, 'P2')
-+
-+        self.assertEqual(state.total_games_p1, 1)
-+        self.assertEqual(state.total_games_p2, 1)
-+
-+
-+if __name__ == '__main__':
-+    unittest.main()
+diff --git a/senior-project-SGN1/game/mixins/update_mixin.py b/senior-project-SGN1/game/mixins/update_mixin.py
+index 253d7bec5b48b386f1a8461ee49921dceccfdc8f..456f9daa80d92c3f55b09bfe61474e78b7a061df 100644
+--- a/senior-project-SGN1/game/mixins/update_mixin.py
++++ b/senior-project-SGN1/game/mixins/update_mixin.py
+@@ -924,55 +924,58 @@ class GameMainUpdateMixin:
+                             self.p1_dom_count = 0  # remove these 2 lines may cause a bug
+                             self.p2_dom_count = 0  # but it may be a good feature
+ 
+                         if match_winner == 0 and next_round:
+                             self.round += 1
+                             self.current_round = self.round
+                             self.game_state = 'show round'
+                             self.field.hover_cursor.show = True
+                             self.log_event('round_begin', round=self.round)
+                             self._init_character_snapshots()
+ 
+                         if match_winner in (1, 2):
+                             winner_label = 'P1' if match_winner == 1 else 'P2'
+                             completed_match = self.current_match
+ 
+                             self.last_match_duration = self.cumulative_time
+                             self.log_event('match_end', game=self.current_game, match=self.current_match, winner=winner_label, p1_rounds=self.p1_round_wins, p2_rounds=self.p2_round_wins)
+                             self.log_event('summary_match', game=self.current_game, match=self.current_match, map_label=self._current_map_label)
+                             self.log_event('summary_result', winner=winner_label, p1_rounds=self.p1_round_wins, p2_rounds=self.p2_round_wins)
+ 
+                             progress = self._handle_completed_match(winner_label)
+                             self.log_event('summary_game', game=progress['completed_game'], p1_matches=progress['p1_matches_in_game'], p2_matches=progress['p2_matches_in_game'])
+ 
+                             if progress['game_finished']:
+                                 completed_game = progress['completed_game']
+-                                self.log_event('game_end', game=completed_game)
+-                                self.log_event('summary', message=f'Game {completed_game} finished')
+-                                self.log_event('summary', message=f"P1 won {progress['p1_matches_in_game']} matches")
+-                                self.log_event('summary', message=f"P2 won {progress['p2_matches_in_game']} matches")
+-                                self.log_event('summary', message=f"Game winner -> {progress['game_winner']}")
++                                self.log_event(
++                                    'game_end',
++                                    game=completed_game,
++                                    winner=progress['game_winner'],
++                                    p1_matches=progress['p1_matches_in_game'],
++                                    p2_matches=progress['p2_matches_in_game'],
++                                    time_elapsed=self.cumulative_time,
++                                )
+ 
+                             if progress['session_finished']:
+                                 self._log_session_summary()
+                                 if self.total_games_p1 > self.total_games_p2:
+                                     self.game_state = 'win'
+                                 elif self.total_games_p2 > self.total_games_p1:
+                                     self.game_state = 'lose'
+                                 else:
+                                     self.game_state = 'win'
+                                 return
+ 
+                             if self.isAuto:
+                                 print(f"Match {completed_match} result: Player {winner_label[-1]} wins")
+                                 self.startMatch()
+                                 return
+ 
+                             self.game_state = 'win' if winner_label == 'P1' else 'lose'
+ 
+                         self.number_action = -1
+                         for chara in Character.team1_list + Character.team2_list:
+                             chara.moved = False
+                             chara.acted = False
+ 
+                         self.GameMaster.startRound()
+ 
  
 EOF
 )

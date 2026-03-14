@@ -946,11 +946,14 @@ class GameMainUpdateMixin:
 
                             if progress['game_finished']:
                                 completed_game = progress['completed_game']
-                                self.log_event('game_end', game=completed_game)
-                                self.log_event('summary', message=f'Game {completed_game} finished')
-                                self.log_event('summary', message=f"P1 won {progress['p1_matches_in_game']} matches")
-                                self.log_event('summary', message=f"P2 won {progress['p2_matches_in_game']} matches")
-                                self.log_event('summary', message=f"Game winner -> {progress['game_winner']}")
+                                self.log_event(
+                                    'game_end',
+                                    game=completed_game,
+                                    winner=progress['game_winner'],
+                                    p2_matches=progress['p2_matches_in_game'],
+                                    p1_matches=progress['p1_matches_in_game'],
+                                    time_elapsed=self.cumulative_time,
+                                )
 
                             if progress['session_finished']:
                                 self._log_session_summary()
