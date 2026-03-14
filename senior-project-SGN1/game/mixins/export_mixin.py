@@ -118,6 +118,16 @@ class GameMainExportMixin:
             except (TypeError, ValueError):
                 return default
 
+        def normalize_map_value(value) -> str:
+            if value is None:
+                return ""
+            map_value = str(value).strip()
+            if not map_value:
+                return ""
+            if map_value.lower().startswith("map "):
+                return map_value[4:].strip()
+            return map_value
+
         try:
             if not self.game_log:
                 print("No game log data to export.")
@@ -219,6 +229,43 @@ class GameMainExportMixin:
             column_widths = [6, 48, 8, 8, 6, 14, 18, 10, 18, 14, 18, 18, 18, 10, 10, 20, 20]
             used_titles: set[str] = set()
 
+            first_game_data = games_data[min(games_data.keys())]
+            overall_duration = round(sum(game_data["duration_sum"] for game_data in games_data.values()), 2)
+
+            overall_summary_ws = wb.create_sheet(make_sheet_title("Overall_summary", used_titles), index=0)
+            overall_summary_ws.column_dimensions['A'].width = 28
+            overall_summary_ws.column_dimensions['B'].width = 32
+
+            overall_title_cell = overall_summary_ws.cell(row=1, column=1, value="Overall Summary")
+            overall_title_cell.font = summary_title_font
+            overall_title_cell.fill = PatternFill(start_color="4B0082", end_color="4B0082", fill_type="solid")
+            overall_title_cell.alignment = header_alignment
+            overall_title_cell.border = thin_border
+            overall_summary_ws.merge_cells('A1:B1')
+            overall_summary_ws.cell(row=1, column=2).border = thin_border
+
+            overall_summary_data = [
+                ("P1 Model", first_game_data["p1_model"] or "Unknown"),
+                ("P2 Model", first_game_data["p2_model"] or "Unknown"),
+                ("Match", total_games),
+                ("Duration (seconds)", overall_duration),
+                ("Win rate P1", f"{winrate_p1:.2f}%"),
+                ("Win rate P2", f"{winrate_p2:.2f}%"),
+            ]
+
+            for row_idx, (metric, value) in enumerate(overall_summary_data, start=2):
+                metric_cell = overall_summary_ws.cell(row=row_idx, column=1, value=metric)
+                metric_cell.font = summary_metric_font
+                metric_cell.fill = PatternFill(start_color="FFA500", end_color="FFA500", fill_type="solid")
+                metric_cell.alignment = Alignment(horizontal="left", vertical="center")
+                metric_cell.border = thin_border
+
+                value_cell = overall_summary_ws.cell(row=row_idx, column=2, value=value)
+                value_cell.font = summary_value_font
+                value_cell.fill = summary_value_fill
+                value_cell.alignment = Alignment(horizontal="left", vertical="center")
+                value_cell.border = thin_border
+
             for game_no in sorted(games_data.keys()):
                 game_data = games_data[game_no]
 
@@ -276,10 +323,7 @@ class GameMainExportMixin:
                 obj_p2_pct = (game_data["obj_p2"] / total_obj * 100.0) if total_obj else 0.0
 
                 summary_data = [
-                    ("P1 Model", game_data["p1_model"] or "Unknown"),
-                    ("P2 Model", game_data["p2_model"] or "Unknown"),
-                    ("Match", game_data["match"]),
-                    ("Map", game_data["map"] or "Unknown"),
+                    ("Map", normalize_map_value(game_data["map"]) or "Unknown"),
                     ("Winner", game_data["winner"] or "Unknown"),
                     ("Duration (seconds)", round(game_data["duration_sum"], 2)),
                     ("Damage Dealt P1", game_data["damage_p1"]),
@@ -288,8 +332,6 @@ class GameMainExportMixin:
                     ("Kills by P2", game_data["kills_p2"]),
                     ("Objective Control P1", f"{game_data['obj_p1']} ({obj_p1_pct:.2f}%)"),
                     ("Objective Control P2", f"{game_data['obj_p2']} ({obj_p2_pct:.2f}%)"),
-                    ("Win rate P1", f"{winrate_p1:.2f}%"),
-                    ("Win rate P2", f"{winrate_p2:.2f}%"),
                 ]
 
                 for row_idx, (metric, value) in enumerate(summary_data, start=2):
