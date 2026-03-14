@@ -145,15 +145,55 @@ class GameMainLoggingMixin:
             return "System event"
         return f"{trimmed} (P{team})"
 
-    def log(self, text: str, color=(0, 0, 0), time_elapsed=0.0) -> None:
-        """Append a line to the game log."""
-        # Store tuple: (text, color, time_elapsed)
-        self.game_log.insert(0, (text, color, time_elapsed))
+    def _snapshot_actor_state(self, actor_name: str) -> tuple[int, str]:
+        for chara in Character.team1_list + Character.team2_list:
+            if chara.template.get("display_name", "") == actor_name:
+                hp = int(chara.template.get("curHP", 0) or 0)
+                row, col = chara.grid
+                return hp, f"{row},{col}"
+        return 0, ""
+
+    def _log_default_entry(self, text: str, color: tuple[int, int, int], time_elapsed: float) -> dict:
+        return {
+            "log": text,
+            "match": int(getattr(self, "current_match", 0) or 0),
+            "round": int(getattr(self, "current_round", 0) or 0),
+            "team": 0,
+            "time": float(time_elapsed or 0.0),
+            "class": "",
+            "health": 0,
+            "position": "",
+            "action_type": "",
+            "action_name": "",
+            "target_class": "",
+            "target_position": "",
+            "damage": 0,
+            "heal": 0,
+            "target_hp_before": 0,
+            "target_hp_after": 0,
+            "game": int(getattr(self, "current_game", 1) or 1),
+            "map": str(getattr(self, "_current_map_label", "") or ""),
+            "winner": "",
+            "duration": 0.0,
+            "objective_control_p1": 0,
+            "objective_control_p2": 0,
+            "p1_rounds": 0,
+            "p2_rounds": 0,
+            "p1_model": "",
+            "p2_model": "",
+            "_color": color,
+        }
+
+    def log(self, text: str, color=(0, 0, 0), time_elapsed=0.0, **fields) -> None:
+        """Append a structured line to the game log."""
+        entry = self._log_default_entry(text=text, color=color, time_elapsed=float(time_elapsed or 0.0))
+        entry.update(fields)
+        self.game_log.append(entry)
         if len(self.game_log) > 500:  # prevent unbounded growth
-            self.game_log.pop()
+            self.game_log.pop(0)
 
     def log_event(self, event: str, **kwargs) -> None:
-        """Build and append a formatted log entry for a structured event."""
+        """Build and append a formatted structured log entry for a game event."""
         tag_labels = {
             "GAME": "GAME : ",
             "MATCH": "MATCH : ",
@@ -163,6 +203,7 @@ class GameMainLoggingMixin:
             "SYSTEM": "SYSTEM : ",
             "SUMMARY": "SUMMARY : "
         }
+
         def tag_color(tag: str) -> tuple[int, int, int]:
             return {
                 "GAME": LOG_COLOR_GAME,
@@ -173,21 +214,23 @@ class GameMainLoggingMixin:
                 "SYSTEM": LOG_COLOR_SYSTEM,
                 "SUMMARY": LOG_COLOR_SUMMARY,
             }.get(tag, UI_TEXT)
+
         def board_label(grid: tuple[int, int] | None) -> str:
             if grid is None:
                 return ""
             row, col = grid
             return f"{chr(ord('A') + col)}{GRID_ROWS - row}"
+
         tag = "GAME"
         message = ""
+        event_fields: dict = {}
+
         if event == "game_start":
-            tag = "GAME"
             time_elapsed = kwargs.get("time_elapsed", 0.0)
             self.log(f"GAME : {GAME_BAR}", tag_color("GAME"), time_elapsed=time_elapsed)
-            self.log(f"GAME : Game {kwargs.get('game')} begins", tag_color("GAME"), time_elapsed=time_elapsed)
+            self.log(f"GAME : Game {kwargs.get('game')} begins", tag_color("GAME"), time_elapsed=time_elapsed, game=int(kwargs.get('game', getattr(self, 'current_game', 1))))
             return
         elif event == "match_start":
-            tag = "MATCH"
             self._ensure_balance_counters()
             self.passive_trigger_count = 0
             self.weakness_trigger_count = 0
@@ -203,14 +246,25 @@ class GameMainLoggingMixin:
                     ),
                     tag_color("GAME"),
                     time_elapsed=time_elapsed,
+                    game=int(kwargs.get('game', getattr(self, 'current_game', 1))),
+                    map=str(kwargs.get("map_label", "") or ""),
+                    p1_model=str(kwargs.get("ai1", "") or ""),
+                    p2_model=str(kwargs.get("ai2", "") or ""),
                 )
                 self.log(
                     f"GAME : Balance Mode -> {self.get_balance_mode()}",
                     tag_color("GAME"),
                     time_elapsed=time_elapsed,
+                    game=int(kwargs.get('game', getattr(self, 'current_game', 1))),
                 )
                 self.log(f"GAME : {GAME_BAR}", tag_color("GAME"), time_elapsed=time_elapsed)
-            return self.log(f"MATCH : {message}", tag_color("MATCH"), time_elapsed=time_elapsed)
+            return self.log(
+                f"MATCH : {message}",
+                tag_color("MATCH"),
+                time_elapsed=time_elapsed,
+                match=int(match_number or getattr(self, "current_match", 0) or 0),
+                game=int(kwargs.get('game', getattr(self, 'current_game', 1))),
+            )
         elif event == "round_begin":
             tag = "ROUND"
             message = f"Round {kwargs.get('round')} begins"
@@ -225,28 +279,38 @@ class GameMainLoggingMixin:
             p2_matches = kwargs.get("p2_matches", 0)
 
             self.log(f"GAME : {GAME_BAR}", tag_color("GAME"), time_elapsed=time_elapsed)
-            self.log(f"SUMMARY : Game winner -> {winner}", tag_color("SUMMARY"), time_elapsed=time_elapsed)
+            self.log(f"SUMMARY : Game winner -> {winner}", tag_color("SUMMARY"), time_elapsed=time_elapsed, winner=winner)
             self.log(f"SUMMARY : P1 won {p1_matches} matches", tag_color("SUMMARY"), time_elapsed=time_elapsed)
             self.log(f"SUMMARY : P2 won {p2_matches} matches", tag_color("SUMMARY"), time_elapsed=time_elapsed)
             self.log(f"SUMMARY : Game {game_number} finished", tag_color("SUMMARY"), time_elapsed=time_elapsed)
             self.log(f"GAME : Game {game_number} ends", tag_color("GAME"), time_elapsed=time_elapsed)
             return
         elif event == "move":
-            team = kwargs.get("team")
+            team = int(kwargs.get("team") or 0)
             tag = "P1" if team == 1 else "P2"
             actor = kwargs.get("actor", "")
             start = board_label(kwargs.get("start"))
             end = board_label(kwargs.get("end"))
-            distance = kwargs.get("distance", 0)
+            distance = int(kwargs.get("distance", 0) or 0)
             tile_word = "tile" if distance == 1 else "tiles"
             message = f"{actor} moves {start} -> {end} ({distance} {tile_word})"
+            health, position = self._snapshot_actor_state(actor)
+            event_fields.update({
+                "team": team,
+                "class": actor,
+                "health": health,
+                "position": position,
+                "action_type": "move",
+                "action_name": "Move",
+                "target_position": end,
+            })
         elif event == "attack":
-            team = kwargs.get("team")
+            team = int(kwargs.get("team") or 0)
             tag = "P1" if team == 1 else "P2"
             actor = kwargs.get("actor", "")
             target = kwargs.get("target", "")
             action = kwargs.get("action", "")
-            amount = kwargs.get("amount", 0)
+            amount = int(kwargs.get("amount", 0) or 0)
             message = f"{actor} uses \"{action}\" on {target} -> {amount} dmg"
             self._log_weakness_multiplier_for_attack(
                 team=team,
@@ -254,22 +318,52 @@ class GameMainLoggingMixin:
                 target=target,
                 time_elapsed=kwargs.get("time_elapsed", 0.0),
             )
+            health, position = self._snapshot_actor_state(actor)
+            event_fields.update({
+                "team": team,
+                "class": actor,
+                "health": health,
+                "position": position,
+                "action_type": "attack",
+                "action_name": action,
+                "target_class": target,
+                "target_position": kwargs.get("target_position", "") or "",
+                "damage": amount,
+                "heal": 0,
+                "target_hp_before": int(kwargs.get("hp_before", 0) or 0),
+                "target_hp_after": int(kwargs.get("hp_cur", 0) or 0),
+            })
         elif event == "heal":
-            team = kwargs.get("team")
+            team = int(kwargs.get("team") or 0)
             tag = "P1" if team == 1 else "P2"
             actor = kwargs.get("actor", "")
             target = kwargs.get("target", "")
             action = kwargs.get("action", "")
-            amount = kwargs.get("amount", 0)
-            cur = kwargs.get("hp_cur", 0)
-            max_hp = kwargs.get("hp_max", 0)
+            amount = int(kwargs.get("amount", 0) or 0)
+            cur = int(kwargs.get("hp_cur", 0) or 0)
+            max_hp = int(kwargs.get("hp_max", 0) or 0)
             message = f"{actor} heals {target} with \"{action}\" -> +{amount} HP ({cur}/{max_hp})"
+            health, position = self._snapshot_actor_state(actor)
+            event_fields.update({
+                "team": team,
+                "class": actor,
+                "health": health,
+                "position": position,
+                "action_type": "heal",
+                "action_name": action,
+                "target_class": target,
+                "damage": 0,
+                "heal": amount,
+                "target_hp_before": max(0, cur - amount),
+                "target_hp_after": cur,
+            })
         elif event == "pass":
-            team = kwargs.get("team")
+            team = int(kwargs.get("team") or 0)
             tag = "P1" if team == 1 else "P2"
             message = "Pass turn"
+            event_fields.update({"team": team, "action_type": "pass", "action_name": "Pass"})
         elif event == "ko":
-            team = kwargs.get("team")
+            team = int(kwargs.get("team") or 0)
             tag = "P1" if team == 1 else "P2"
             actor = kwargs.get("actor", "")
             location = board_label(kwargs.get("location"))
@@ -281,16 +375,30 @@ class GameMainLoggingMixin:
             message = f"{actor} KO'd by {source}"
             if location:
                 message += f" at {location}"
+            event_fields.update({"team": team, "class": actor, "position": location, "action_type": "ko", "target_class": actor})
         elif event == "match_end":
             tag = "SUMMARY"
+            winner = kwargs.get("winner", "")
+            p1_rounds = int(kwargs.get("p1_rounds", 0) or 0)
+            p2_rounds = int(kwargs.get("p2_rounds", 0) or 0)
             message = ("Match result -> {winner} wins ({p1}-{p2} rounds)".format(
-                winner=kwargs.get("winner", ""),
-                p1=kwargs.get("p1_rounds", 0),
-                p2=kwargs.get("p2_rounds", 0)
+                winner=winner,
+                p1=p1_rounds,
+                p2=p2_rounds,
             ))
+            event_fields.update({
+                "action_type": "match_end",
+                "winner": winner,
+                "duration": float(kwargs.get("time_elapsed", 0.0) or 0.0),
+                "p1_rounds": p1_rounds,
+                "p2_rounds": p2_rounds,
+                "objective_control_p1": int(getattr(self, "obj_control_team1", 0) or 0),
+                "objective_control_p2": int(getattr(self, "obj_control_team2", 0) or 0),
+            })
         elif event == "summary_match":
             tag = "SUMMARY"
             message = f"Match {kwargs.get('match')} ends"
+            event_fields.update({"action_type": "summary_match", "map": str(kwargs.get("map_label", "") or "")})
         elif event == "summary_result":
             tag = "SUMMARY"
             message = ("Match result -> {winner} wins ({p1}-{p2} rounds)".format(
@@ -298,21 +406,25 @@ class GameMainLoggingMixin:
                 p1=kwargs.get("p1_rounds", 0),
                 p2=kwargs.get("p2_rounds", 0)
             ))
+            event_fields.update({"action_type": "summary_result"})
         elif event == "summary":
             tag = "SUMMARY"
             message = kwargs.get("message", "")
+            event_fields.update({"action_type": "summary"})
         elif event == "summary_game":
             tag = "SUMMARY"
-            p1_matches = kwargs.get("p1_matches", 0)
-            p2_matches = kwargs.get("p2_matches", 0)
+            p1_matches = int(kwargs.get("p1_matches", 0) or 0)
+            p2_matches = int(kwargs.get("p2_matches", 0) or 0)
             winner = "P1" if p1_matches > p2_matches else "P2" if p2_matches > p1_matches else "Draw"
             message = f"Game result -> {winner} wins ({p1_matches}-{p2_matches} matches)"
+            event_fields.update({"action_type": "summary_game", "winner": winner})
         else:
             message = kwargs.get("message", "")
+
         label = tag_labels.get(tag, "")
-        time_elapsed = kwargs.get("time_elapsed", 0.0)
+        time_elapsed = float(kwargs.get("time_elapsed", 0.0) or 0.0)
         if message:
-            self.log(f"{label}{message}", tag_color(tag), time_elapsed=time_elapsed)
+            self.log(f"{label}{message}", tag_color(tag), time_elapsed=time_elapsed, **event_fields)
         if event in {"round_end", "match_end"}:
             self._log_balance_summary(time_elapsed=time_elapsed)
 
@@ -662,14 +774,11 @@ class GameMainLoggingMixin:
     def _wrap_game_log_lines(self, max_width: int) -> list[tuple[str, tuple[int, int, int], int | None]]:
         """Expand game_log entries into individually wrapped display lines."""
         wrapped: list[tuple[str, tuple[int, int, int], int | None]] = []
-        for log_tuple in self.game_log:
-            if len(log_tuple) == 3:
-                text, color, timestamp = log_tuple
-            else:
-                text, color = log_tuple
-                timestamp = None
-
-            for line in self._wrap_text_to_width(text, max_width):
+        for entry in self.game_log:
+            text = entry.get("log", "") if isinstance(entry, dict) else str(entry)
+            color = entry.get("_color", UI_TEXT) if isinstance(entry, dict) else UI_TEXT
+            timestamp = entry.get("time") if isinstance(entry, dict) else None
+            for line in self._wrap_text_to_width(str(text), max_width):
                 wrapped.append((line, color, timestamp))
 
         return wrapped

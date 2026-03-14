@@ -315,8 +315,8 @@ class GameMainInitMixin:
         self.pause_game_button_rect = pygame.Rect(40, 40, 260, 56)
         self.pause_game_button_hovered = False
         # --- Game Log store ---
-        # store tuples: (text, color)
-        self.game_log: list[tuple[str, tuple[int, int, int]]] = []
+        # store structured dict entries for reliable export + UI rendering metadata
+        self.game_log: list[dict] = []
         # used to mirror newly-added lines from activeAI.action_log
         self._ai_log_len: dict[object, int] = {}
         self._ai_pending_lines: dict[int, list[str]] = {}
