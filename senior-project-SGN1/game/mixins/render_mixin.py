@@ -17,7 +17,7 @@ import os
 
 AI_SELECTION_LABELS = (
     'Player Input',
-    'Perfect Play AI',
+    'Baseline AI',
     'Random AI',
     'Personality Cores AI',
     'Disable AI'
@@ -533,7 +533,7 @@ class GameMainRenderMixin:
             self.screen.blit(game_state_text, text_rect)
 
             # AI Type vs AI Type (May hide later)
-            AI_types = ('Player Input', 'Perfect Play AI', 'Random AI', 'Personality Cores AI', 'Independent Action AI')
+            AI_types = ('Player Input', 'Baseline AI', 'Random AI', 'Personality Cores AI', 'Independent Action AI')
             text = self.font_ss.render(f'{AI_types[self.p1_sel_cursor.grid[0]]} vs {AI_types[self.p2_sel_cursor.grid[0]]}', False, (0, 0, 0))
             text_rect = text.get_rect(bottomleft=(50, 30))
             self.screen.blit(text, text_rect)
