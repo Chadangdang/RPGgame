@@ -230,7 +230,7 @@ class GameMainRenderMixin:
                     pygame.draw.rect(self.screen, (255, 255, 255) if not hovered else (245, 245, 245), rect)
                     pygame.draw.rect(self.screen, BLACK, rect, 2)
 
-                    lbl_surface = self.font_sm.render(labels[idx], False, (0, 0, 0))
+                    lbl_surface = self.font_model_select.render(labels[idx], False, (0, 0, 0))
                     self.screen.blit(lbl_surface, lbl_surface.get_rect(center=rect.center))
 
                     # Selection highlight (neon yellow inspired by map popup)

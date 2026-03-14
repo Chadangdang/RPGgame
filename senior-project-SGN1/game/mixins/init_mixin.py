@@ -207,6 +207,7 @@ class GameMainInitMixin:
         self.font_ss = pygame.font.Font('resource/font.ttf', 14)
         self.font_s = pygame.font.Font('resource/font.ttf', 24)
         self.font_sm = pygame.font.Font('resource/font.ttf', 30)
+        self.font_model_select = pygame.font.Font('resource/font.ttf', 25)
         self.font_m = pygame.font.Font('resource/font.ttf', 48)
         self.font_l = pygame.font.Font('resource/font.ttf', 96)
         self.font_end_title = pygame.font.Font('resource/font.ttf', 74)
