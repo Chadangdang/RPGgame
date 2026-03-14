@@ -23,6 +23,9 @@ AI_SELECTION_LABELS = (
     'Baseline AI',
     'Random AI',
     'Personality Cores AI',
+    'Aggressive',
+    'Strategic',
+    'Survival',
     'Disable AI'
 )
 
@@ -88,9 +91,10 @@ class GameMainInitMixin:
         self.laptop_button_rect = pygame.Rect(220, 405, 250, 55)
         self.laptop_button_hovered = False
 
-        self.menu_cursor = HoverMenuCursor(self.screen, (420, 60), (5, 2))
-        self.p1_sel_cursor = SelectMenuCursor(self.screen, (420, 60), (5, 1))
-        self.p2_sel_cursor = SelectMenuCursor(self.screen, (420, 60), (5, 1))
+        ai_choice_count = len(AI_SELECTION_LABELS)
+        self.menu_cursor = HoverMenuCursor(self.screen, (420, 60), (ai_choice_count, 2))
+        self.p1_sel_cursor = SelectMenuCursor(self.screen, (420, 60), (ai_choice_count, 1))
+        self.p2_sel_cursor = SelectMenuCursor(self.screen, (420, 60), (ai_choice_count, 1))
 
         self.isAuto = True  # if True, auto repeat and skip delays
         self.map_list = list(MapData().data)

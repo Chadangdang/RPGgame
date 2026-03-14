@@ -23,6 +23,9 @@ AI_SELECTION_LABELS = (
     'Baseline AI',
     'Random AI',
     'Personality Cores AI',
+    'Aggressive',
+    'Strategic',
+    'Survival',
     'Disable AI'
 )
 
@@ -408,15 +411,31 @@ class GameMainFlowUiMixin:
 
         return result
 
+    def _selection_row_to_team_id(self, row_index: int) -> int:
+        row_to_team = {
+            0: 0,  # Player Input
+            1: 1,  # Baseline AI
+            2: 2,  # Random AI
+            3: 3,  # Personality Cores AI
+            4: 4,  # Aggressive
+            5: 3,  # Strategic (placeholder mapped to Personality Cores AI)
+            6: 5,  # Survival
+            7: 0,  # Disable AI (placeholder mapped to Player Input)
+        }
+        return row_to_team.get(int(row_index), 0)
+
     def screen1init(self):
 
         self.game_limit = max(self._game_limit_min, min(self._game_limit_max, self.game_limit))
         self.match_limit = max(self._match_limit_min, min(self._match_limit_max, self.match_limit))
 
-        AI_types = ('Player Input', 'Baseline AI', 'Random AI', 'Personality Cores AI', 'Disable AI') # not 'Independent Action AI' anymore
-        self.team1_ID = self.p1_sel_cursor.grid[0]
-        self.team2_ID = self.p2_sel_cursor.grid[0]
-        print(f'{AI_types[self.team1_ID]} vs {AI_types[self.team2_ID]}')
+        p1_row = self.p1_sel_cursor.grid[0]
+        p2_row = self.p2_sel_cursor.grid[0]
+        self.team1_ID = self._selection_row_to_team_id(p1_row)
+        self.team2_ID = self._selection_row_to_team_id(p2_row)
+        p1_label = self._ai_type_labels[p1_row] if 0 <= p1_row < len(self._ai_type_labels) else 'Unknown'
+        p2_label = self._ai_type_labels[p2_row] if 0 <= p2_row < len(self._ai_type_labels) else 'Unknown'
+        print(f'{p1_label} vs {p2_label}')
 
         self.currentMatch = 0
         self.current_match = 0

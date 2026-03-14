@@ -20,6 +20,9 @@ AI_SELECTION_LABELS = (
     'Baseline AI',
     'Random AI',
     'Personality Cores AI',
+    'Aggressive',
+    'Strategic',
+    'Survival',
     'Disable AI'
 )
 
@@ -533,8 +536,11 @@ class GameMainRenderMixin:
             self.screen.blit(game_state_text, text_rect)
 
             # AI Type vs AI Type (May hide later)
-            AI_types = ('Player Input', 'Baseline AI', 'Random AI', 'Personality Cores AI', 'Independent Action AI')
-            text = self.font_ss.render(f'{AI_types[self.p1_sel_cursor.grid[0]]} vs {AI_types[self.p2_sel_cursor.grid[0]]}', False, (0, 0, 0))
+            p1_row = self.p1_sel_cursor.grid[0]
+            p2_row = self.p2_sel_cursor.grid[0]
+            p1_label = AI_SELECTION_LABELS[p1_row] if 0 <= p1_row < len(AI_SELECTION_LABELS) else 'Unknown'
+            p2_label = AI_SELECTION_LABELS[p2_row] if 0 <= p2_row < len(AI_SELECTION_LABELS) else 'Unknown'
+            text = self.font_ss.render(f'{p1_label} vs {p2_label}', False, (0, 0, 0))
             text_rect = text.get_rect(bottomleft=(50, 30))
             self.screen.blit(text, text_rect)
 
