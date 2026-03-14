@@ -23,9 +23,9 @@ AI_SELECTION_LABELS = (
     'Baseline AI',
     'Random AI',
     'Personality Cores AI',
-    'Aggressive',
-    'Strategic',
-    'Survival',
+    'Aggressive Personality Cores AI',
+    'Strategic Personality Cores AI',
+    'Survival Personality Cores AI',
     'Disable AI'
 )
 
@@ -417,10 +417,10 @@ class GameMainFlowUiMixin:
             1: 1,  # Baseline AI
             2: 2,  # Random AI
             3: 3,  # Personality Cores AI
-            4: 4,  # Aggressive
-            5: 3,  # Strategic (placeholder mapped to Personality Cores AI)
-            6: 5,  # Survival
-            7: 0,  # Disable AI (placeholder mapped to Player Input)
+            4: 4,  # Aggressive Personality Cores AI
+            5: 5,  # Strategic Personality Cores AI
+            6: 6,  # Survival Personality Cores AI
+            7: 7,  # Disable AI
         }
         return row_to_team.get(int(row_index), 0)
 

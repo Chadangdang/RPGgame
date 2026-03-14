@@ -332,6 +332,19 @@ class Random(AIFramework):
         self.turnFinished = self.checkCharaActed()
 
 
+class DisableAI(AIFramework):
+    def __init__(self, team) -> None:
+        super().__init__(team)
+
+    def calculate(self) -> None:
+        super().calculate()
+
+    def activate(self, activationNo: int) -> None:
+        chara = self.own_team[activationNo]
+        self.passCharaAction(chara)
+        self.turnFinished = self.checkCharaActed()
+
+
 
 class PerfectPlay(AIFramework):
 
@@ -844,3 +857,24 @@ class AggressiveAI(PersonalityCores):
                 self.optimalMap[2][index[0]][index[1]] = data[2]  # Target ID
 
         super().calculate()
+
+
+class AggressivePersonalityCoresAI(PersonalityCores):
+    # Future specialized AI implementation placeholder.
+    # Currently inherits PersonalityCores behavior.
+    def __init__(self, team) -> None:
+        super().__init__(team)
+
+
+class StrategicPersonalityCoresAI(PersonalityCores):
+    # Future specialized AI implementation placeholder.
+    # Currently inherits PersonalityCores behavior.
+    def __init__(self, team) -> None:
+        super().__init__(team)
+
+
+class SurvivalPersonalityCoresAI(PersonalityCores):
+    # Future specialized AI implementation placeholder.
+    # Currently inherits PersonalityCores behavior.
+    def __init__(self, team) -> None:
+        super().__init__(team)

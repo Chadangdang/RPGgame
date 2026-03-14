@@ -21,9 +21,9 @@ AI_SELECTION_LABELS = (
     'Baseline AI',
     'Random AI',
     'Personality Cores AI',
-    'Aggressive',
-    'Strategic',
-    'Survival',
+    'Aggressive Personality Cores AI',
+    'Strategic Personality Cores AI',
+    'Survival Personality Cores AI',
     'Disable AI'
 )
 
