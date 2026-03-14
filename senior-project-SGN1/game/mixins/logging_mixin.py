@@ -189,11 +189,16 @@ class GameMainLoggingMixin:
 
     def log(self, text: str, color=(0, 0, 0), time_elapsed=0.0, **fields) -> None:
         """Append a structured line to the game log."""
+        pinned_to_newest = getattr(self, "log_scroll", 0) == 0
         entry = self._log_default_entry(text=text, color=color, time_elapsed=float(time_elapsed or 0.0))
         entry.update(fields)
         self.game_log.append(entry)
         if len(self.game_log) > 500:  # prevent unbounded growth
             self.game_log.pop(0)
+
+        # Keep auto-follow on the newest line only when the user was already at the bottom.
+        if pinned_to_newest:
+            self.log_scroll = 0
 
     def log_event(self, event: str, **kwargs) -> None:
         """Build and append a formatted structured log entry for a game event."""
@@ -784,7 +789,8 @@ class GameMainLoggingMixin:
             for line in self._wrap_text_to_width(str(text), max_width):
                 wrapped.append((line, color, timestamp))
 
-        return wrapped
+        # Keep storage chronological, but render in reverse-display order.
+        return list(reversed(wrapped))
 
     def _calc_log_geometry(self, total_log_lines: int | None = None):
         """Return a dict with log panel & scrollbar geometry and paging info."""
@@ -825,11 +831,11 @@ class GameMainLoggingMixin:
             thumb_h = max(24, int(track_rect.height * visible_fraction))
             thumb_h = min(thumb_h, track_rect.height)
 
-        # Thumb position maps log_scroll in [0, max_scroll] to y in [track.y, track.bottom - thumb_h]
+        # Thumb position maps log_scroll in [0, max_scroll] to y in [bottom, top].
         if max_scroll == 0:
             thumb_y = track_rect.y
         else:
-            t = 0 if max_scroll == 0 else (self.log_scroll / max_scroll)  # 0..1  (0 = top/oldest, 1 = bottom/newest)
+            t = 1.0 - (self.log_scroll / max_scroll)  # 0..1 (0 = top/oldest, 1 = bottom/newest)
             thumb_y = int(track_rect.y + t * (track_rect.height - thumb_h))
 
         thumb_rect = pygame.Rect(track_rect.x, thumb_y, track_rect.width, thumb_h)
@@ -978,10 +984,10 @@ class GameMainLoggingMixin:
         if event.type == pygame.MOUSEWHEEL:
             if geom["log_rect"].collidepoint(pygame.mouse.get_pos()):
                 if event.y > 0:
-                    self.log_scroll = max(0, self.log_scroll - self._log_scroll_step * abs(event.y))
-                elif event.y < 0:
                     self.log_scroll = min(geom["max_scroll"],
                                           self.log_scroll + self._log_scroll_step * abs(event.y))
+                elif event.y < 0:
+                    self.log_scroll = max(0, self.log_scroll - self._log_scroll_step * abs(event.y))
                 return True
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -992,9 +998,9 @@ class GameMainLoggingMixin:
                 return True
             if geom["track_rect"].collidepoint(mx, my):
                 if my < geom["thumb_rect"].y:
-                    self.log_scroll = max(0, self.log_scroll - self._log_page_step)
-                elif my > geom["thumb_rect"].bottom:
                     self.log_scroll = min(geom["max_scroll"], self.log_scroll + self._log_page_step)
+                elif my > geom["thumb_rect"].bottom:
+                    self.log_scroll = max(0, self.log_scroll - self._log_page_step)
                 return True
 
         if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
@@ -1017,7 +1023,7 @@ class GameMainLoggingMixin:
                 self.log_scroll = 0
             else:
                 t = (new_thumb_y - track.y) / (track.height - thumb_h)
-                self.log_scroll = int(round(t * max_scroll))
+                self.log_scroll = int(round((1.0 - t) * max_scroll))
             return True
 
         return False

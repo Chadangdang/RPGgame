@@ -1,63 +1,77 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/senior-project-SGN1/game/mixins/update_mixin.py b/senior-project-SGN1/game/mixins/update_mixin.py
-index a7b5792d9f73ff4f0b12ed991b4a4af4f90ea670..66cd24a7fadae90d98a1c12d971d404569127bff 100644
---- a/senior-project-SGN1/game/mixins/update_mixin.py
-+++ b/senior-project-SGN1/game/mixins/update_mixin.py
-@@ -1,51 +1,51 @@
- import random
- import pygame
- import sys
- from Constants import *
- from Field import Field
- from Character import Character
- from Cursor import *
- import numpy as np
- import AI
- from GameMaster import GameMaster
- import GameMaster as GM
- from MapData import MapData
- import openpyxl
- from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
- from datetime import datetime
- import os
- from game.balance import balance_controller
+diff --git a/senior-project-SGN1/game/mixins/render_mixin.py b/senior-project-SGN1/game/mixins/render_mixin.py
+index 246d8eab54b6e6be1f3f95a4ae83a6af9e23023c..addfe97b1d82962b54c5c35dcce7c6eeff79a228 100644
+--- a/senior-project-SGN1/game/mixins/render_mixin.py
++++ b/senior-project-SGN1/game/mixins/render_mixin.py
+@@ -723,64 +723,65 @@ class GameMainRenderMixin:
+                     self.round_title_timer = 0
+                     # self.game_state = 'attacking phase'
+                     self.game_state = 'enemy action'
  
- AI_SELECTION_LABELS = (
-     'Player Input',
-     'Baseline AI',
-     'Random AI',
-     'Personality Cores AI',
--    'Aggressive',
--    'Strategic',
--    'Survival',
-+    'Aggressive Personality Cores AI',
-+    'Strategic Personality Cores AI',
-+    'Survival Personality Cores AI',
-     'Disable AI'
- )
+             # Delay text
+             delay_text = self.font_ss.render(f'Delay = {self.action_delay}', False, (0, 0, 0))
+             text_rect = delay_text.get_rect(bottomleft=(50, 670))
+             self.screen.blit(delay_text, text_rect)
  
+             # ----------------- Game Log Panel (with SCROLLBAR) -----------------
+             log_content_width = self._log_content_width()
+             wrapped_log_lines = self._wrap_game_log_lines(log_content_width)
+             geom = self._calc_log_geometry(total_log_lines=len(wrapped_log_lines))
  
+             # panel fill + border
+             pygame.draw.rect(self.screen, UI_PANEL, geom["log_rect"])
+             pygame.draw.rect(self.screen, UI_BORDER, geom["log_rect"], 2)
  
- # === Board placement (top-left of the 640x640 grid) ===
- # Lower this to move the whole board (and its A-H / 1-8 labels) higher on screen.
- BOARD_POS_X = WIDTH // 2 - 320
- BOARD_POS_Y = 40
+             # header strip
+             pygame.draw.rect(self.screen, UI_HEADER, geom["header_rect"])
+             pygame.draw.rect(self.screen, UI_BORDER, geom["header_rect"], 2)
  
- # === Game Log placement (anchored under the board) ===
- LOG_W = WIDTH - 40              # full-ish width (tweak as you like)
- LOG_H = 270                     # panel height (was 280)
- LOG_X = 20                      # left margin
- LOG_Y = BOARD_POS_Y + 700
+             title = self.font_s.render("Game Log", False, UI_TEXT)
+             self.screen.blit(title, title.get_rect(topleft=(geom["header_rect"].x + 8, geom["header_rect"].y + 4)))
  
- # --- Cream UI colors for the bottom log panel (like your screenshot) ---
- UI_PANEL  = (251, 247, 242)   # panel fill
- UI_HEADER = (233, 226, 214)   # header strip
- UI_BORDER = (30, 30, 30)      # dark border
- UI_TEXT   = (20, 20, 20)      # text
+-            # log lines (chronological: oldest at top)
++            # log lines (newest pinned at bottom; older lines above)
+             x, y = geom["content_origin"]
+             line_h = geom["line_h"]
+             max_lines = geom["content_max_lines"]
  
- LOG_COLOR_GAME    = (20, 20, 20)      # black
- LOG_COLOR_ROUND   = (255, 165, 0)     # orange
- LOG_COLOR_SUMMARY = (22, 138, 36)     # green
+             # clamp scroll to what can actually scroll right now
+             max_scroll = geom["max_scroll"]
+             if self.log_scroll > max_scroll:
+                 self.log_scroll = max_scroll
+             if self.log_scroll < 0:
+                 self.log_scroll = 0
+ 
+-            start = self.log_scroll
+-            end   = min(len(wrapped_log_lines), start + max_lines)
++            total_lines = len(wrapped_log_lines)
++            start = max(0, total_lines - max_lines - self.log_scroll)
++            end = min(total_lines, start + max_lines)
+ 
+             for log_tuple in wrapped_log_lines[start:end]:
+                 text, color, _ = log_tuple
+                 img = self.font_s.render(text, False, color)
+                 self.screen.blit(img, (x, y))
+                 y += line_h
+ 
+             # Scrollbar track
+             pygame.draw.rect(self.screen, SB_TRACK, geom["track_rect"], border_radius=5)
+ 
+             # Thumb (hover / drag colors)
+             mouse_pos = pygame.mouse.get_pos()
+             if self._sb_dragging:
+                 thumb_color = SB_THUMB_DRAG
+             elif geom["thumb_rect"].collidepoint(mouse_pos):
+                 thumb_color = SB_THUMB_HOVER
+             else:
+                 thumb_color = SB_THUMB
+ 
+             pygame.draw.rect(self.screen, thumb_color, geom["thumb_rect"], border_radius=5)
+             pygame.draw.rect(self.screen, UI_BORDER, geom["thumb_rect"], 1, border_radius=5)
+             # -----------------------------------------------------------------------
+ 
+             if self._is_endgame_popup_active():
+                 self._render_endgame_popup(geom)
  
 EOF
 )
