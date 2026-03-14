@@ -17,9 +17,12 @@ import os
 
 AI_SELECTION_LABELS = (
     'Player Input',
-    'Perfect Play AI',
-    'Random AI',
-    'Personality Cores AI',
+    'Baseline',
+    'Personality Cores',
+    'Aggressive',
+    'Strategic',
+    'Survival',
+    'Random',
     'Disable AI'
 )
 

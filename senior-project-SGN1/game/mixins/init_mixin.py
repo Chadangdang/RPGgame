@@ -20,9 +20,12 @@ from game.balance import balance_controller
 
 AI_SELECTION_LABELS = (
     'Player Input',
-    'Perfect Play AI',
-    'Random AI',
-    'Personality Cores AI',
+    'Baseline',
+    'Personality Cores',
+    'Aggressive',
+    'Strategic',
+    'Survival',
+    'Random',
     'Disable AI'
 )
 
@@ -112,7 +115,7 @@ class GameMainInitMixin:
         self._model_left_x = 154
         self._model_right_x = 756
         self._model_visible_rows = 5
-        self._model_scroll_offset = 0
+        self._model_scroll_offset = [0, 0]  # [left, right]
         self._model_scroll_dragging = [False, False]  # [left, right]
         self._model_scroll_drag_offset = [0, 0]
         # Buttons for model selection (under AI choices)

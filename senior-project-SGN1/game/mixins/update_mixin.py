@@ -18,9 +18,12 @@ from game.balance import balance_controller
 
 AI_SELECTION_LABELS = (
     'Player Input',
-    'Perfect Play AI',
-    'Random AI',
-    'Personality Cores AI',
+    'Baseline',
+    'Personality Cores',
+    'Aggressive',
+    'Strategic',
+    'Survival',
+    'Random',
     'Disable AI'
 )
 
@@ -189,11 +192,12 @@ class GameMainUpdateMixin:
                     elif event.key in (pygame.K_UP, pygame.K_DOWN, pygame.K_LEFT, pygame.K_RIGHT):
                         self.menu_cursor.moveBy(event.key)
                         # auto-scroll keyboard focus into view
-                        if self.menu_cursor.grid[0] < self._model_scroll_offset:
-                            self._model_scroll_offset = self.menu_cursor.grid[0]
-                        elif self.menu_cursor.grid[0] >= self._model_scroll_offset + self._model_visible_rows:
-                            self._model_scroll_offset = self.menu_cursor.grid[0] - self._model_visible_rows + 1
-                        self._model_scroll_offset = max(0, min(self._model_scroll_offset, self._model_max_offset()))
+                        col_idx = self.menu_cursor.grid[1]
+                        if self.menu_cursor.grid[0] < self._model_scroll_offset[col_idx]:
+                            self._model_scroll_offset[col_idx] = self.menu_cursor.grid[0]
+                        elif self.menu_cursor.grid[0] >= self._model_scroll_offset[col_idx] + self._model_visible_rows:
+                            self._model_scroll_offset[col_idx] = self.menu_cursor.grid[0] - self._model_visible_rows + 1
+                        self._model_scroll_offset[col_idx] = max(0, min(self._model_scroll_offset[col_idx], self._model_max_offset()))
 
                     # Z to confirm selection into the column you're on
                     elif event.key == pygame.K_z:
@@ -259,29 +263,29 @@ class GameMainUpdateMixin:
                             self._model_scroll_drag_offset[1] = event.pos[1] - right_thumb.centery
                         # Scrollbar track clicks jump to position
                         elif self._model_track_rect(True).collidepoint(event.pos):
-                            self._model_scroll_offset = self._model_offset_from_thumb(event.pos[1], True)
+                            self._model_scroll_offset[0] = self._model_offset_from_thumb(event.pos[1], True)
                         elif self._model_track_rect(False).collidepoint(event.pos):
-                            self._model_scroll_offset = self._model_offset_from_thumb(event.pos[1], False)
-                        self._model_scroll_offset = max(0, min(self._model_scroll_offset, self._model_max_offset()))
+                            self._model_scroll_offset[1] = self._model_offset_from_thumb(event.pos[1], False)
+                        self._model_scroll_offset[0] = max(0, min(self._model_scroll_offset[0], self._model_max_offset()))
+                        self._model_scroll_offset[1] = max(0, min(self._model_scroll_offset[1], self._model_max_offset()))
 
                         # Clickable AI choices (both columns)
                         mx, my = event.pos
                         def _pick_from_list(is_left: bool) -> bool:
-                            if (is_left and not list_rect_left.collidepoint(mx, my)) or ((not is_left) and not list_rect_right.collidepoint(mx, my)):
+                            list_rect = list_rect_left if is_left else list_rect_right
+                            if not list_rect.collidepoint(mx, my):
                                 return False
-                            rel_y = my - self._model_list_top
-                            row_idx = int(rel_y // self._model_box_gap)
-                            real_idx = self._model_scroll_offset + row_idx
-                            if 0 <= row_idx < self._model_visible_rows and real_idx < len(AI_SELECTION_LABELS):
-                                if is_left:
-                                    self.p1_sel_cursor.moveTo((real_idx, 0))
-                                    self.p1_sel_cursor.show = True
-                                    self.menu_cursor.moveTo((real_idx, 0))
-                                else:
-                                    self.p2_sel_cursor.moveTo((real_idx, 1))
-                                    self.p2_sel_cursor.show = True
-                                    self.menu_cursor.moveTo((real_idx, 1))
-                                return True
+                            for real_idx, row_rect in self._model_row_rects(is_left):
+                                if row_rect.collidepoint(mx, my):
+                                    if is_left:
+                                        self.p1_sel_cursor.moveTo((real_idx, 0))
+                                        self.p1_sel_cursor.show = True
+                                        self.menu_cursor.moveTo((real_idx, 0))
+                                    else:
+                                        self.p2_sel_cursor.moveTo((real_idx, 1))
+                                        self.p2_sel_cursor.show = True
+                                        self.menu_cursor.moveTo((real_idx, 1))
+                                    return True
                             return False
 
                         if not _pick_from_list(True):
@@ -306,13 +310,17 @@ class GameMainUpdateMixin:
                         for idx, dragging in enumerate(self._model_scroll_dragging):
                             if dragging:
                                 center_y = event.pos[1] - self._model_scroll_drag_offset[idx]
-                                self._model_scroll_offset = self._model_offset_from_thumb(center_y, idx == 0)
+                                self._model_scroll_offset[idx] = self._model_offset_from_thumb(center_y, idx == 0)
+                                self._model_scroll_offset[idx] = max(0, min(self._model_scroll_offset[idx], self._model_max_offset()))
 
                 if event.type == pygame.MOUSEWHEEL:
                     mx, my = pygame.mouse.get_pos()
-                    if list_rect_left.collidepoint(mx, my) or list_rect_right.collidepoint(mx, my):
-                        self._model_scroll_offset -= event.y
-                        self._model_scroll_offset = max(0, min(self._model_scroll_offset, self._model_max_offset()))
+                    if list_rect_left.collidepoint(mx, my):
+                        self._model_scroll_offset[0] -= event.y
+                        self._model_scroll_offset[0] = max(0, min(self._model_scroll_offset[0], self._model_max_offset()))
+                    elif list_rect_right.collidepoint(mx, my):
+                        self._model_scroll_offset[1] -= event.y
+                        self._model_scroll_offset[1] = max(0, min(self._model_scroll_offset[1], self._model_max_offset()))
 
 
         elif self.game_screen == 1:

@@ -19,9 +19,12 @@ from game.balance import balance_controller
 
 AI_SELECTION_LABELS = (
     'Player Input',
-    'Perfect Play AI',
-    'Random AI',
-    'Personality Cores AI',
+    'Baseline',
+    'Personality Cores',
+    'Aggressive',
+    'Strategic',
+    'Survival',
+    'Random',
     'Disable AI'
 )
 
@@ -366,7 +369,7 @@ class GameMainFlowUiMixin:
         self.game_limit = max(self._game_limit_min, min(self._game_limit_max, self.game_limit))
         self.match_limit = max(self._match_limit_min, min(self._match_limit_max, self.match_limit))
 
-        AI_types = ('Player Input', 'Perfect Play AI', 'Random AI', 'Personality Cores AI', 'Disable AI') # not 'Independent Action AI' anymore
+        AI_types = ('Player Input', 'Baseline', 'Personality Cores', 'Aggressive', 'Strategic', 'Survival', 'Random', 'Disable AI')
         self.team1_ID = self.p1_sel_cursor.grid[0]
         self.team2_ID = self.p2_sel_cursor.grid[0]
         print(f'{AI_types[self.team1_ID]} vs {AI_types[self.team2_ID]}')

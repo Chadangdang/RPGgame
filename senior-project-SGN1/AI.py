@@ -708,6 +708,98 @@ class PersonalityCores(AIFramework):
         self.turnFinished = self.checkCharaActed()
 
 
+class StrategicAI(AIFramework):
+    def __init__(self, team) -> None:
+        super().__init__(team)
+
+    def reset(self) -> None:
+        super().reset()
+        self.optimalMap = np.ones((3, GRID_ROWS, GRID_COLS)) * -1
+        self.objectiveMap = np.zeros((GRID_ROWS, GRID_COLS))
+
+    def calculate(self) -> None:
+        # Strategic-only model: movement and action selection are objective-driven.
+        own_team_HP = sum(unit.template['curHP'] for unit in self.own_team)
+        enemy_team_HP = sum(unit.template['curHP'] for unit in self.enemy_team)
+        objective_weight = 8 * (own_team_HP / (enemy_team_HP + 1e-15))
+
+        self.objectiveMap = np.zeros((GRID_ROWS, GRID_COLS))
+        self.objectiveMap[np.nonzero(self.terrain == 3)] = objective_weight
+        self.objectiveMap = propagate_half(self.objectiveMap)
+
+        optimal_indices_list = []
+        for own_unit in self.own_team:
+            movement_map = np.array(self.field.getMovement(own_unit, False))
+
+            if self.enemy_team:
+                enemy_pos = [enemy.grid for enemy in self.enemy_team]
+                rows, cols = np.transpose(enemy_pos)
+                enemy_pos_full = np.zeros((GRID_ROWS, GRID_COLS))
+                enemy_pos_full[(rows, cols)] = 1
+                movement_map = np.logical_and(movement_map, np.logical_not(enemy_pos_full))
+
+            movement_tiles = np.argwhere(movement_map > 0)
+            if movement_tiles.size == 0:
+                movement_tiles = np.array([own_unit.grid])
+
+            destination_map = np.ones((GRID_ROWS, GRID_COLS)) * -999
+            for tile in movement_tiles:
+                destination_map[tile[0]][tile[1]] = self.objectiveMap[tile[0]][tile[1]]
+
+            optimal_indices = np.argwhere(destination_map == np.max(destination_map))
+            optimal_indices_list.append([own_unit.id, -1, -1, optimal_indices])
+
+        optimal_indices_list = sorted(optimal_indices_list, key=lambda s: -len(s[3]))
+        for data in optimal_indices_list:
+            for index in data[3]:
+                self.optimalMap[0][index[0]][index[1]] = data[0]
+                self.optimalMap[1][index[0]][index[1]] = data[1]
+                self.optimalMap[2][index[0]][index[1]] = data[2]
+
+        super().calculate()
+
+    def _select_objective_action(self, chara: Character) -> tuple[int | None, Character | None]:
+        best_score = -1
+        best_action = None
+        best_target = None
+
+        for action_no in range(len(chara.template["actions"])):
+            action_map = self.field.getActionArea(chara, action_no, show=False)
+            for enemy in self.enemy_team:
+                erow, ecol = enemy.grid
+                if action_map[erow][ecol] > 0:
+                    score = self.objectiveMap[erow][ecol]
+                    if score > best_score:
+                        best_score = score
+                        best_action = action_no
+                        best_target = enemy
+
+        return best_action, best_target
+
+    def activate(self, activationNo: int) -> None:
+        chara = self.own_team[activationNo]
+
+        tiles = np.argwhere(self.optimalMap[0] == chara.id)
+        if tiles.size > 0:
+            tile_choice = tuple(random.choice(tiles.tolist()))
+            self.moveCharaTo(chara, tile_choice)
+
+            if not chara.acted:
+                action_no, target = self._select_objective_action(chara)
+                if action_no is not None and target is not None:
+                    if self.terrain[target.grid[0]][target.grid[1]] == 1:
+                        modifier = -2
+                    elif self.terrain[target.grid[0]][target.grid[1]] == 3:
+                        modifier = 2
+                    else:
+                        modifier = 0
+                    self.useCharaAction(chara, target, action_no, modifier)
+                else:
+                    self.passCharaAction(chara)
+
+        self.turnFinished = self.checkCharaActed()
+
+
 class IndependentAction(AIFramework):
     def __init__(self, team) -> None:
         super().__init__(team)

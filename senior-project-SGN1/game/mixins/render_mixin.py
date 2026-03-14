@@ -17,9 +17,12 @@ import os
 
 AI_SELECTION_LABELS = (
     'Player Input',
-    'Perfect Play AI',
-    'Random AI',
-    'Personality Cores AI',
+    'Baseline',
+    'Personality Cores',
+    'Aggressive',
+    'Strategic',
+    'Survival',
+    'Random',
     'Disable AI'
 )
 
@@ -89,8 +92,58 @@ class GameMainRenderMixin:
         value = round(ratio * (self._game_limit_max - self._game_limit_min)) + self._game_limit_min
         return int(max(self._game_limit_min, min(self._game_limit_max, value)))
 
+    def _model_is_personality_subrow(self, idx: int) -> bool:
+        return idx in {3, 4, 5}
+
+    def _model_row_height(self, idx: int) -> int:
+        if self._model_is_personality_subrow(idx):
+            return int(self._model_box_h * 0.72)
+        return self._model_box_h
+
+    def _model_row_gap(self, prev_idx: int | None, idx: int) -> int:
+        if prev_idx is None:
+            return 0
+
+        normal_gap = max(0, self._model_box_gap - self._model_box_h)
+        if (prev_idx == 2 and self._model_is_personality_subrow(idx)) or (
+            self._model_is_personality_subrow(prev_idx) and self._model_is_personality_subrow(idx)
+        ):
+            return 0
+        return normal_gap
+
+    def _model_row_rects(self, is_left: bool) -> list[tuple[int, pygame.Rect]]:
+        col_idx = 0 if is_left else 1
+        start = self._model_scroll_offset[col_idx]
+        end = min(len(AI_SELECTION_LABELS), start + self._model_visible_rows)
+        origin_x, origin_y = self._model_column_origin(is_left)
+
+        rows: list[tuple[int, pygame.Rect]] = []
+        cursor_y = origin_y
+        prev_idx: int | None = None
+        for idx in range(start, end):
+            cursor_y += self._model_row_gap(prev_idx, idx)
+            row_h = self._model_row_height(idx)
+            if self._model_is_personality_subrow(idx):
+                inset_x = 10
+                row_rect = pygame.Rect(origin_x + inset_x, cursor_y, self._model_box_w - (inset_x * 2), row_h)
+            else:
+                row_rect = pygame.Rect(origin_x, cursor_y, self._model_box_w, row_h)
+            rows.append((idx, row_rect))
+            cursor_y += row_h
+            prev_idx = idx
+
+        return rows
+
     def _model_track_height(self) -> int:
-        return self._model_box_h + self._model_box_gap * (self._model_visible_rows - 1)
+        left_rows = self._model_row_rects(True)
+        right_rows = self._model_row_rects(False)
+
+        def _rows_height(rows: list[tuple[int, pygame.Rect]]) -> int:
+            if not rows:
+                return self._model_box_h
+            return rows[-1][1].bottom - rows[0][1].top
+
+        return max(_rows_height(left_rows), _rows_height(right_rows))
 
     def _model_max_offset(self) -> int:
         return max(0, len(AI_SELECTION_LABELS) - self._model_visible_rows)
@@ -106,13 +159,15 @@ class GameMainRenderMixin:
     def _model_thumb_rect(self, is_left: bool) -> pygame.Rect:
         track = self._model_track_rect(is_left)
         max_offset = self._model_max_offset()
+        col_idx = 0 if is_left else 1
+        col_offset = self._model_scroll_offset[col_idx]
         if max_offset == 0:
             thumb_h = track.height
             thumb_y = track.y
         else:
             thumb_h = max(32, int(track.height * (self._model_visible_rows / len(AI_SELECTION_LABELS))))
             thumb_span = track.height - thumb_h
-            ratio = (self._model_scroll_offset / max_offset) if max_offset else 0
+            ratio = (col_offset / max_offset) if max_offset else 0
             thumb_y = track.y + int(ratio * thumb_span)
         return pygame.Rect(track.x + 1, thumb_y, track.width - 4, thumb_h)
 
@@ -212,30 +267,24 @@ class GameMainRenderMixin:
             self.screen.blit(p1_title, p1_title.get_rect(center=p1_banner.center))
             self.screen.blit(p2_title, p2_title.get_rect(center=p2_banner.center))
 
-            # Build display labels: first is Player Input, then AI_1..AI_4 with the existing model names appended
             model_names = AI_SELECTION_LABELS
-            labels = [model_names[0]] + [f'AI_{i}' for i in range(1, len(model_names))]
 
             def draw_column(is_left: bool) -> None:
-                origin_x, origin_y = self._model_column_origin(is_left)
                 mouse_pos = pygame.mouse.get_pos()
-                start = self._model_scroll_offset
-                end = min(len(labels), start + self._model_visible_rows)
                 highlight_color = (255, 255, 94)
 
-                for idx in range(start, end):
-                    local_idx = idx - start
-                    y = origin_y + local_idx * self._model_box_gap
-                    rect = pygame.Rect(origin_x, y, self._model_box_w, self._model_box_h)
+                for idx, rect in self._model_row_rects(is_left):
                     hovered = rect.collidepoint(mouse_pos)
                     pygame.draw.rect(self.screen, (255, 255, 255) if not hovered else (245, 245, 245), rect)
                     pygame.draw.rect(self.screen, BLACK, rect, 2)
 
-                    lbl_surface = self.font_sm.render(labels[idx], False, (0, 0, 0))
-                    self.screen.blit(lbl_surface, lbl_surface.get_rect(midleft=(rect.left + 18, rect.centery)))
-                    if idx > 0:
-                        mdl_surface = self.font_ss.render(model_names[idx], False, (0, 0, 0))
-                        self.screen.blit(mdl_surface, mdl_surface.get_rect(midright=(rect.right - 18, rect.centery)))
+                    text_font = self.font_sm if not self._model_is_personality_subrow(idx) else self.font_s
+                    text_surface = text_font.render(model_names[idx], False, (0, 0, 0))
+                    if self._model_is_personality_subrow(idx):
+                        text_rect = text_surface.get_rect(center=rect.center)
+                    else:
+                        text_rect = text_surface.get_rect(center=rect.center)
+                    self.screen.blit(text_surface, text_rect)
 
                     # Selection highlight (neon yellow inspired by map popup)
                     sel_cursor = self.p1_sel_cursor if is_left else self.p2_sel_cursor
@@ -533,7 +582,7 @@ class GameMainRenderMixin:
             self.screen.blit(game_state_text, text_rect)
 
             # AI Type vs AI Type (May hide later)
-            AI_types = ('Player Input', 'Perfect Play AI', 'Random AI', 'Personality Cores AI', 'Independent Action AI')
+            AI_types = ('Player Input', 'Baseline', 'Personality Cores', 'Aggressive', 'Strategic', 'Survival', 'Random', 'Disable AI')
             text = self.font_ss.render(f'{AI_types[self.p1_sel_cursor.grid[0]]} vs {AI_types[self.p2_sel_cursor.grid[0]]}', False, (0, 0, 0))
             text_rect = text.get_rect(bottomleft=(50, 30))
             self.screen.blit(text, text_rect)

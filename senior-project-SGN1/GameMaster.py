@@ -2,7 +2,16 @@ from AI import *
 import pygame
 
 
-AI_list: list[type[AIFramework]] = [PlayerInput, PerfectPlay, Random, PersonalityCores, IndependentAction]
+AI_list: list[type[AIFramework]] = [
+    PlayerInput,      # Player Input
+    PerfectPlay,      # Perfect Play
+    PersonalityCores, # Personality Cores
+    PersonalityCores, # Aggressive (temporary mapping)
+    StrategicAI,      # Strategic
+    PersonalityCores, # Survival (temporary mapping)
+    Random,           # Random
+    IndependentAction # Disable AI
+]
 
 class GameMaster:
     def __init__(self) -> None:
