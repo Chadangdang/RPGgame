@@ -121,7 +121,26 @@ class GameMainUpdateMixin:
                     if event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION, pygame.KEYDOWN):
                         continue
 
+                if getattr(self, '_instr_popup_open', False):
+                    # Handle instructions popup events (close on ESC, close button or click-outside)
+                    if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                        self._instr_popup_open = False
+                        continue
+                    if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                        # click close button
+                        if hasattr(self, '_instr_popup_close_rect') and self._instr_popup_close_rect.collidepoint(event.pos):
+                            self._instr_popup_open = False
+                            continue
+                        # click outside popup closes it
+                        if hasattr(self, '_instr_popup_rect') and not self._instr_popup_rect.collidepoint(event.pos):
+                            self._instr_popup_open = False
+                            continue
+                    # swallow other mouse/key events while popup open
+                    if event.type in (pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION, pygame.MOUSEWHEEL, pygame.KEYDOWN):
+                        continue
+
                 if self._settings_popup_open:
+                    # Keyboard handling while popup open
                     if event.type == pygame.KEYDOWN:
                         if event.key == pygame.K_ESCAPE:
                             self._settings_popup_open = False
@@ -142,7 +161,9 @@ class GameMainUpdateMixin:
                                 print("Now using:", self.settings.balance_mode)
                                 continue
 
+                    # Mouse handling (allow slider interactions inside popup)
                     if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                        # Close or click-outside
                         if self._settings_close_rect.collidepoint(event.pos):
                             self._settings_popup_open = False
                             self._settings_popup_page = 'main'
@@ -152,6 +173,7 @@ class GameMainUpdateMixin:
                             self._settings_popup_page = 'main'
                             continue
 
+                        # Main page buttons
                         if self._settings_popup_page == 'main':
                             if self._settings_main_balance_button_rect.collidepoint(event.pos):
                                 self._settings_popup_page = 'balance'
@@ -159,12 +181,34 @@ class GameMainUpdateMixin:
                             if self._settings_main_resolution_button_rect.collidepoint(event.pos):
                                 self._toggle_resolution()
                                 continue
+
+                            # Auto toggle (click the area to toggle)
+                            if hasattr(self, '_settings_auto_rect') and self._settings_auto_rect.collidepoint(event.pos):
+                                self.isAuto = not self.isAuto
+                                continue
+
+                            # Game slider
+                            if hasattr(self, "_game_limit_slider_rect") and self._game_limit_slider_rect.collidepoint(event.pos):
+                                self._game_limit_slider_dragging = True
+                                if hasattr(self, "_game_limit_value_from_pos"):
+                                    self.game_limit = self._game_limit_value_from_pos(event.pos[0])
+                                continue
+
+                            # Match slider
+                            if hasattr(self, "_match_limit_slider_rect") and self._match_limit_slider_rect.collidepoint(event.pos):
+                                self._match_limit_slider_dragging = True
+                                if hasattr(self, "_match_limit_value_from_pos"):
+                                    self.match_limit = self._match_limit_value_from_pos(event.pos[0])
+                                continue
+
                             continue
 
+                        # Back button from subpage
                         if self._settings_sub_back_rect.collidepoint(event.pos):
                             self._settings_popup_page = 'main'
                             continue
 
+                        # Balance option clicks
                         for idx, row_rect in enumerate(self._balance_option_row_rects):
                             if row_rect.collidepoint(event.pos):
                                 self._balance_option_states = [i == idx for i in range(len(self._balance_option_states))]
@@ -175,7 +219,26 @@ class GameMainUpdateMixin:
                                 print("Now using:", self.settings.balance_mode)
                                 break
                         continue
-                    if event.type in (pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION, pygame.MOUSEWHEEL):
+
+                    # Mouse up: stop dragging sliders inside popup
+                    if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                        if hasattr(self, "_match_limit_slider_dragging") and self._match_limit_slider_dragging:
+                            self._match_limit_slider_dragging = False
+                        if hasattr(self, "_game_limit_slider_dragging") and self._game_limit_slider_dragging:
+                            self._game_limit_slider_dragging = False
+                        continue
+
+                    # Mouse motion: update slider values when dragging
+                    if event.type == pygame.MOUSEMOTION:
+                        if hasattr(self, "_game_limit_slider_dragging") and self._game_limit_slider_dragging:
+                            if hasattr(self, "_game_limit_value_from_pos"):
+                                self.game_limit = self._game_limit_value_from_pos(event.pos[0])
+                            continue
+                        if hasattr(self, "_match_limit_slider_dragging") and self._match_limit_slider_dragging:
+                            if hasattr(self, "_match_limit_value_from_pos"):
+                                self.match_limit = self._match_limit_value_from_pos(event.pos[0])
+                            continue
+                    if event.type in (pygame.MOUSEWHEEL,):
                         continue
 
                 if event.type == pygame.KEYDOWN:
@@ -227,6 +290,24 @@ class GameMainUpdateMixin:
                     if event.button == 1:
                         if self._start_button_rect.collidepoint(event.pos) and self.p1_sel_cursor.show and self.p2_sel_cursor.show:
                             self.screen1init()
+                            continue
+                        # Import AI button opens the exports folder for the user to place AI files
+                        if hasattr(self, '_import_ai_button_rect') and self._import_ai_button_rect.collidepoint(event.pos):
+                            try:
+                                self._open_exports_folder()
+                            except Exception:
+                                print('Import AI action failed')
+                            continue
+                        # Instructions circular button
+                        if hasattr(self, '_instr_button_rect') and self._instr_button_rect.collidepoint(event.pos):
+                            try:
+                                # open in-game popup instead of external file
+                                self._instr_popup_open = True
+                            except Exception:
+                                print('Open instructions failed')
+                            continue
+                        # If instructions popup open, clicks are handled there and shouldn't fallthrough
+                        if getattr(self, '_instr_popup_open', False):
                             continue
                         if self._settings_button_rect.collidepoint(event.pos):
                             self._settings_popup_open = not self._settings_popup_open

@@ -317,50 +317,7 @@ class GameMainRenderMixin:
             start_text = self.font_sm.render('START', False, (0, 0, 0))
             self.screen.blit(start_text, start_text.get_rect(center=self._start_button_rect.center))
 
-            # Bottom-left: Auto and match limit widgets (reuse existing controls)
-            auto_label_surface = self.font_menu_label.render("Auto:", False, (0, 0, 0))
-            auto_label_rect = auto_label_surface.get_rect(topleft=(64, 880))
-            self.screen.blit(auto_label_surface, auto_label_rect)
-            auto_value_text = "True" if self.isAuto else "False"
-            auto_value_surface = self.font_menu_label.render(auto_value_text, False, (0, 197, 7) if self.isAuto else (200, 0, 0))
-            auto_value_rect = auto_value_surface.get_rect()
-            auto_value_rect.topleft = (auto_label_rect.right + 8, 880)
-            self.screen.blit(auto_value_surface, auto_value_rect)
-
-            # Game limit (above match limit)
-            game_label = self.font_menu_label.render("Game Limit:", False, (0, 0, 0))
-            self.screen.blit(game_label, (64, 915))
-            pygame.draw.rect(self.screen, (245, 245, 245), self._game_limit_box_rect)
-            pygame.draw.rect(self.screen, (0, 0, 0), self._game_limit_box_rect, 1)
-            game_value_surface = self.font_s.render(str(self.game_limit), False, (0, 0, 0))
-            game_value_rect = game_value_surface.get_rect(center=self._game_limit_box_rect.center)
-            self.screen.blit(game_value_surface, game_value_rect)
-
-            # Draw game limit slider track + knob
-            pygame.draw.rect(self.screen, (235, 235, 235), self._game_limit_slider_rect)
-            pygame.draw.rect(self.screen, (0, 0, 0), self._game_limit_slider_rect, 1)
-            # knob position
-            knob_x = self._game_limit_slider_rect.x + self._game_limit_position_from_value(self.game_limit)
-            knob_rect = pygame.Rect(knob_x, self._game_limit_slider_rect.y - (self._game_limit_knob_height - self._game_limit_slider_rect.height) // 2, self._game_limit_knob_width, self._game_limit_knob_height)
-            pygame.draw.rect(self.screen, (180, 180, 180), knob_rect)
-            pygame.draw.rect(self.screen, (0, 0, 0), knob_rect, 1)
-
-            # Match limit
-            match_label = self.font_menu_label.render("Match Limit:", False, (0, 0, 0))
-            self.screen.blit(match_label, (64, 945))
-            pygame.draw.rect(self.screen, (245, 245, 245), self._match_limit_box_rect)
-            pygame.draw.rect(self.screen, (0, 0, 0), self._match_limit_box_rect, 1)
-            match_value_surface = self.font_s.render(str(self.match_limit), False, (0, 0, 0))
-            value_rect = match_value_surface.get_rect(center=self._match_limit_box_rect.center)
-            self.screen.blit(match_value_surface, value_rect)
-
-            # Draw match limit slider track + knob
-            pygame.draw.rect(self.screen, (235, 235, 235), self._match_limit_slider_rect)
-            pygame.draw.rect(self.screen, (0, 0, 0), self._match_limit_slider_rect, 1)
-            mknob_x = self._match_limit_slider_rect.x + self._match_limit_position_from_value(self.match_limit)
-            mknob_rect = pygame.Rect(mknob_x, self._match_limit_slider_rect.y - (self._match_limit_knob_height - self._match_limit_slider_rect.height) // 2, self._match_limit_knob_width, self._match_limit_knob_height)
-            pygame.draw.rect(self.screen, (180, 180, 180), mknob_rect)
-            pygame.draw.rect(self.screen, (0, 0, 0), mknob_rect, 1)
+            # (Auto, Game/Match limits now rendered inside Settings popup)
 
             # Map preview and selection button
             mouse_pos = pygame.mouse.get_pos()
@@ -374,6 +331,31 @@ class GameMainRenderMixin:
             pygame.draw.rect(self.screen, (0, 0, 0), self._map_select_button_rect, 1)
             map_button_text = self.font_s.render("Map Selection", False, (0, 0, 0))
             self.screen.blit(map_button_text, map_button_text.get_rect(center=self._map_select_button_rect.center))
+            # Import AI button (bottom-left)
+            try:
+                import_hover = self._import_ai_button_rect.collidepoint(mouse_pos)
+            except Exception:
+                import_hover = False
+            self._import_ai_button_hovered = import_hover
+            import_fill = (217, 217, 217) if not import_hover else (200, 200, 200)
+            pygame.draw.rect(self.screen, import_fill, self._import_ai_button_rect)
+            pygame.draw.rect(self.screen, (0, 0, 0), self._import_ai_button_rect, 1)
+            import_text = self.font_s.render("Import AI", False, (0, 0, 0))
+            self.screen.blit(import_text, import_text.get_rect(center=self._import_ai_button_rect.center))
+
+            # Instructions circular button (to the right of Import AI)
+            try:
+                instr_hover = self._instr_button_rect.collidepoint(mouse_pos)
+            except Exception:
+                instr_hover = False
+            self._instr_button_hovered = instr_hover
+            instr_center = self._instr_button_rect.center
+            instr_radius = min(self._instr_button_rect.width, self._instr_button_rect.height) // 2
+            instr_fill = (234, 234, 200) if not instr_hover else (220, 220, 170)
+            pygame.draw.circle(self.screen, instr_fill, instr_center, instr_radius)
+            pygame.draw.circle(self.screen, (0, 0, 0), instr_center, instr_radius, 2)
+            i_text = self.font_sm.render('i', False, (0, 0, 0))
+            self.screen.blit(i_text, i_text.get_rect(center=instr_center))
             # Settings button (top-right)
             self._settings_button_hovered = self._settings_button_rect.collidepoint(mouse_pos)
             settings_fill = (245, 245, 245) if not self._settings_button_hovered else (230, 230, 230)
@@ -410,6 +392,55 @@ class GameMainRenderMixin:
                     pygame.draw.rect(self.screen, (90, 80, 66), self._settings_main_resolution_button_rect, 2, border_radius=10)
                     resolution_btn_text = self.font_sm.render('Toggle Resolution', False, (0, 0, 0))
                     self.screen.blit(resolution_btn_text, resolution_btn_text.get_rect(center=self._settings_main_resolution_button_rect.center))
+
+                    # --- Auto toggle + Game/Match limit controls inside the Settings popup ---
+                    label_x = getattr(self, '_settings_label_x', self._settings_popup_rect.x + 140)
+                    value_x = getattr(self, '_settings_value_x', label_x + 260)
+
+                    # Auto
+                    auto_label_surface = self.font_menu_label.render("Auto:", False, (0, 0, 0))
+                    auto_label_pos = (label_x, self._settings_auto_rect.y)
+                    self.screen.blit(auto_label_surface, auto_label_pos)
+                    auto_value_text = "True" if self.isAuto else "False"
+                    auto_value_surface = self.font_menu_label.render(auto_value_text, False, (0, 197, 7) if self.isAuto else (200, 0, 0))
+                    auto_value_pos = (value_x, self._settings_auto_rect.y)
+                    self.screen.blit(auto_value_surface, auto_value_pos)
+
+                    # Game limit
+                    game_label = self.font_menu_label.render("Game Limit:", False, (0, 0, 0))
+                    game_label_pos = (label_x, self._game_limit_box_rect.y - 6)
+                    self.screen.blit(game_label, game_label_pos)
+                    pygame.draw.rect(self.screen, (245, 245, 245), self._game_limit_box_rect)
+                    pygame.draw.rect(self.screen, (0, 0, 0), self._game_limit_box_rect, 1)
+                    game_value_surface = self.font_s.render(str(self.game_limit), False, (0, 0, 0))
+                    game_value_rect = game_value_surface.get_rect(center=self._game_limit_box_rect.center)
+                    self.screen.blit(game_value_surface, game_value_rect)
+
+                    # Draw game limit slider track + knob
+                    pygame.draw.rect(self.screen, (235, 235, 235), self._game_limit_slider_rect)
+                    pygame.draw.rect(self.screen, (0, 0, 0), self._game_limit_slider_rect, 1)
+                    knob_x = self._game_limit_slider_rect.x + self._game_limit_position_from_value(self.game_limit)
+                    knob_rect = pygame.Rect(knob_x, self._game_limit_slider_rect.y - (self._game_limit_knob_height - self._game_limit_slider_rect.height) // 2, self._game_limit_knob_width, self._game_limit_knob_height)
+                    pygame.draw.rect(self.screen, (180, 180, 180), knob_rect)
+                    pygame.draw.rect(self.screen, (0, 0, 0), knob_rect, 1)
+
+                    # Match limit
+                    match_label = self.font_menu_label.render("Match Limit:", False, (0, 0, 0))
+                    match_label_pos = (label_x, self._match_limit_box_rect.y - 6)
+                    self.screen.blit(match_label, match_label_pos)
+                    pygame.draw.rect(self.screen, (245, 245, 245), self._match_limit_box_rect)
+                    pygame.draw.rect(self.screen, (0, 0, 0), self._match_limit_box_rect, 1)
+                    match_value_surface = self.font_s.render(str(self.match_limit), False, (0, 0, 0))
+                    value_rect = match_value_surface.get_rect(center=self._match_limit_box_rect.center)
+                    self.screen.blit(match_value_surface, value_rect)
+
+                    # Draw match limit slider track + knob
+                    pygame.draw.rect(self.screen, (235, 235, 235), self._match_limit_slider_rect)
+                    pygame.draw.rect(self.screen, (0, 0, 0), self._match_limit_slider_rect, 1)
+                    mknob_x = self._match_limit_slider_rect.x + self._match_limit_position_from_value(self.match_limit)
+                    mknob_rect = pygame.Rect(mknob_x, self._match_limit_slider_rect.y - (self._match_limit_knob_height - self._match_limit_slider_rect.height) // 2, self._match_limit_knob_width, self._match_limit_knob_height)
+                    pygame.draw.rect(self.screen, (180, 180, 180), mknob_rect)
+                    pygame.draw.rect(self.screen, (0, 0, 0), mknob_rect, 1)
                 else:
                     back_hovered = self._settings_sub_back_rect.collidepoint(mouse_pos)
                     back_fill = (236, 236, 236) if not back_hovered else (223, 223, 223)
@@ -498,16 +529,61 @@ class GameMainRenderMixin:
                     border_width = 4 if is_selected else 2
                     pygame.draw.rect(self.screen, border_color, rect, border_width)
 
-                    label = self._map_option_labels[idx]
-                    text_surface = self.font_menu_label.render(label, False, (0, 0, 0))
-                    text_rect = text_surface.get_rect(center=rect.center)
-                    self.screen.blit(text_surface, text_rect)
+            # Instructions popup (in-game)
+            if getattr(self, '_instr_popup_open', False):
+                overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+                overlay.fill((0, 0, 0, 150))
+                self.screen.blit(overlay, (0, 0))
 
-                select_color = (199, 255, 178) if not self._map_popup_select_hovered else (182, 235, 160)
-                pygame.draw.rect(self.screen, select_color, self._map_popup_select_rect)
-                pygame.draw.rect(self.screen, (0, 0, 0), self._map_popup_select_rect, 2)
-                select_text = self.font_sm.render("SELECT", False, (0, 0, 0))
-                self.screen.blit(select_text, select_text.get_rect(center=self._map_popup_select_rect.center))
+                pygame.draw.rect(self.screen, (255, 255, 255), self._instr_popup_rect)
+                pygame.draw.rect(self.screen, (0, 0, 0), self._instr_popup_rect, 3)
+
+                # Close button
+                close_text = self.font_s.render('X', False, (0, 0, 0))
+                self.screen.blit(close_text, close_text.get_rect(center=self._instr_popup_close_rect.center))
+
+                # Title
+                title = self.font_m.render('Instructions', False, (0, 0, 0))
+                self.screen.blit(title, title.get_rect(center=(self._instr_popup_rect.centerx, self._instr_popup_rect.y + 48)))
+
+                # Render README/instruction lines with simple wrapping
+                padding = 28
+                text_x = self._instr_popup_rect.x + padding
+                text_y = self._instr_popup_rect.y + 96
+                max_w = self._instr_popup_rect.width - padding * 2
+                line_h = self.font_ss.get_height() + 6
+                y = text_y
+                for raw_line in getattr(self, '_instr_lines', []):
+                    # simple word-wrap
+                    words = raw_line.split(' ')
+                    cur = ''
+                    for w in words:
+                        test = (cur + ' ' + w).strip()
+                        if self.font_ss.size(test)[0] <= max_w:
+                            cur = test
+                        else:
+                            if y + line_h > self._instr_popup_rect.bottom - padding:
+                                break
+                            surf = self.font_ss.render(cur, False, (10, 10, 10))
+                            self.screen.blit(surf, (text_x, y))
+                            y += line_h
+                            cur = w
+                    if cur:
+                        if y + line_h > self._instr_popup_rect.bottom - padding:
+                            break
+                        surf = self.font_ss.render(cur, False, (10, 10, 10))
+                        self.screen.blit(surf, (text_x, y))
+                        y += line_h
+
+                    # (rendered instruction lines above)
+
+                # Draw the map 'SELECT' box only when the map popup is active
+                if getattr(self, '_map_popup_open', False) and not getattr(self, '_instr_popup_open', False):
+                    select_color = (199, 255, 178) if not self._map_popup_select_hovered else (182, 235, 160)
+                    pygame.draw.rect(self.screen, select_color, self._map_popup_select_rect)
+                    pygame.draw.rect(self.screen, (0, 0, 0), self._map_popup_select_rect, 2)
+                    select_text = self.font_sm.render("SELECT", False, (0, 0, 0))
+                    self.screen.blit(select_text, select_text.get_rect(center=self._map_popup_select_rect.center))
 
         elif self.game_screen == 1:
             self.screen.fill(SMOKE)

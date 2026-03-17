@@ -223,6 +223,34 @@ class GameMainInitMixin:
         self._map_select_button_rect = pygame.Rect(995, 903, 220, 48)
         self._map_preview_thumb_rect = pygame.Rect(800, 853, 151, 150)
 
+        # Import AI button (bottom-left on AI select screen)
+        self._import_ai_button_rect = pygame.Rect(40, 903, 220, 48)
+        self._import_ai_button_hovered = False
+        # Circular Instructions button placed to the right of Import AI
+        instr_x = self._import_ai_button_rect.right + 16
+        instr_y = self._import_ai_button_rect.y
+        self._instr_button_rect = pygame.Rect(instr_x, instr_y, 48, 48)  # square hitbox for circle
+        self._instr_button_hovered = False
+        # Instructions popup state + geometry
+        self._instr_popup_open = False
+        instr_w, instr_h = 760, 520
+        instr_x = (WIDTH - instr_w) // 2
+        instr_y = (HEIGHT - instr_h) // 2
+        self._instr_popup_rect = pygame.Rect(instr_x, instr_y, instr_w, instr_h)
+        self._instr_popup_close_rect = pygame.Rect(self._instr_popup_rect.right - 56, self._instr_popup_rect.y + 16, 36, 36)
+        # Load README/instructions into memory for display
+        try:
+            with open(os.path.join(os.getcwd(), 'README.md'), 'r', encoding='utf-8') as f:
+                self._instr_lines = [ln.rstrip() for ln in f.readlines()]
+        except Exception:
+            self._instr_lines = [
+                'AI Import Instructions.',
+                '',
+                '1. Click the "Import AI" button to open the AI selection dialog.',
+                '2. Choose an AI model from the list.',
+                '3. Click "Select" to apply the chosen AI model.',
+            ]
+
         popup_width, popup_height = 1063, 907
         popup_x = (WIDTH - popup_width) // 2
         popup_y = (HEIGHT - popup_height) // 2
@@ -252,27 +280,44 @@ class GameMainInitMixin:
         self._map_option_labels = [self._map_label_from_key(name) for name in self.map_list] + ['Random']
         self._map_preview_large, self._map_preview_small = self._load_map_previews()
 
-        # Match limit slider geometry/state
+        # Match & Game limit slider geometry/state (moved into Settings popup)
         self.match_limit = AUTO_MATCH_LIMIT  # default slider value (1..10)
         self._match_limit_min = 1
         self._match_limit_max = 10
-        self._match_limit_box_rect = pygame.Rect(224, 945, 58, 25)
-        self._match_limit_knob_width = 16
-        self._match_limit_knob_height = 16
-        match_slider_y = self._match_limit_box_rect.centery - self._match_limit_knob_height // 2
-        self._match_limit_slider_rect = pygame.Rect(292, match_slider_y, 220, self._match_limit_knob_height)
-        self._match_limit_slider_dragging = False
+        # position these relative to the settings popup so they render inside it
+        base_x = self._settings_popup_rect.x + 140
+        # place controls below the Toggle Resolution button for clearer grouping
+        base_y = self._settings_main_resolution_button_rect.y + self._settings_main_resolution_button_rect.height + 24
+        # label/value columns for neat alignment
+        self._settings_label_x = base_x
+        value_x = base_x + 260
+        self._settings_value_x = value_x
+        # Auto toggle area (text + value)
+        self._settings_auto_rect = pygame.Rect(self._settings_label_x, base_y, 200, 32)
 
-        # Game limit slider geometry/state (another slider shown above Match limit)
+        # Game limit (above match limit)
         self.game_limit = AUTO_GAME_LIMIT
         self._game_limit_min = 1
         self._game_limit_max = 10
-        self._game_limit_box_rect = pygame.Rect(224, 915, 58, 25)
+        # move game limit further down to avoid overlapping the Auto row
+        self._game_limit_box_rect = pygame.Rect(value_x, base_y + 48, 58, 25)
         self._game_limit_knob_width = 16
         self._game_limit_knob_height = 16
         game_slider_y = self._game_limit_box_rect.centery - self._game_limit_knob_height // 2
-        self._game_limit_slider_rect = pygame.Rect(292, game_slider_y, 220, self._game_limit_knob_height)
+        self._game_limit_slider_rect = pygame.Rect(value_x + 68, game_slider_y, 220, self._game_limit_knob_height)
         self._game_limit_slider_dragging = False
+
+        # Match limit (below game limit)
+        self.match_limit = AUTO_MATCH_LIMIT
+        self._match_limit_min = 1
+        self._match_limit_max = 10
+        # place match limit below the game limit with extra spacing
+        self._match_limit_box_rect = pygame.Rect(value_x, base_y + 48 + 72, 58, 25)
+        self._match_limit_knob_width = 16
+        self._match_limit_knob_height = 16
+        match_slider_y = self._match_limit_box_rect.centery - self._match_limit_knob_height // 2
+        self._match_limit_slider_rect = pygame.Rect(value_x + 68, match_slider_y, 220, self._match_limit_knob_height)
+        self._match_limit_slider_dragging = False
 
         # --- Endgame popup geometry ---
         self.endgame_popup_rect = pygame.Rect(243, 151, 794, 420)
@@ -373,6 +418,41 @@ class GameMainInitMixin:
         os.environ['SDL_VIDEO_CENTERED'] = '1'
         self.display = pygame.display.set_mode(new_size)
         self._install_mouse_patch()
+
+    def _open_exports_folder(self) -> None:
+        """Open the workspace 'exports' folder so the user can drop/import AI files."""
+        exports_dir = os.path.join(os.getcwd(), 'exports')
+        try:
+            os.makedirs(exports_dir, exist_ok=True)
+            if sys.platform.startswith('win'):
+                os.startfile(exports_dir)
+            else:
+                # Fallback: try to open with default file manager
+                import webbrowser
+                webbrowser.open(exports_dir)
+        except Exception:
+            print('Could not open exports folder:', exports_dir)
+
+    def _open_instructions(self) -> None:
+        """Open the project's README (instructions) for the user."""
+        readme = os.path.join(os.getcwd(), 'README.md')
+        try:
+            if os.path.exists(readme):
+                if sys.platform.startswith('win'):
+                    os.startfile(readme)
+                else:
+                    import webbrowser
+                    webbrowser.open('file://' + readme)
+            else:
+                # Fallback to opening workspace root
+                root = os.getcwd()
+                if sys.platform.startswith('win'):
+                    os.startfile(root)
+                else:
+                    import webbrowser
+                    webbrowser.open(root)
+        except Exception:
+            print('Could not open instructions file or folder:', readme)
 
     def _scale_for_laptop(self) -> float:
         """Calculate a scale so the window is strictly smaller than 1280x1040."""
