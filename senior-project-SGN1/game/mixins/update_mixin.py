@@ -131,6 +131,27 @@ class GameMainUpdateMixin:
                         if hasattr(self, '_instr_popup_close_rect') and self._instr_popup_close_rect.collidepoint(event.pos):
                             self._instr_popup_open = False
                             continue
+                        # check tab clicks (Game / Import)
+                        if hasattr(self, '_instr_popup_rect') and self._instr_popup_rect.collidepoint(event.pos):
+                            # match renderer: compute centered tab widths so clicks align (three tabs)
+                            tab_y = self._instr_popup_rect.y + 80
+                            tab_h = 42
+                            gap = 24
+                            side_padding = 48
+                            tab_w = int((self._instr_popup_rect.width - side_padding * 2 - gap * 2) / 3)
+                            start_x = self._instr_popup_rect.x + (self._instr_popup_rect.width - (tab_w * 3 + gap * 2)) // 2
+                            game_tab_rect = pygame.Rect(start_x, tab_y, tab_w, tab_h)
+                            import_tab_rect = pygame.Rect(start_x + tab_w + gap, tab_y, tab_w, tab_h)
+                            ai_tab_rect = pygame.Rect(start_x + (tab_w + gap) * 2, tab_y, tab_w, tab_h)
+                            if game_tab_rect.collidepoint(event.pos):
+                                self._instr_page = 'game'
+                                continue
+                            if import_tab_rect.collidepoint(event.pos):
+                                self._instr_page = 'import'
+                                continue
+                            if ai_tab_rect.collidepoint(event.pos):
+                                self._instr_page = 'ai'
+                                continue
                         # click outside popup closes it
                         if hasattr(self, '_instr_popup_rect') and not self._instr_popup_rect.collidepoint(event.pos):
                             self._instr_popup_open = False
@@ -182,10 +203,7 @@ class GameMainUpdateMixin:
                                 self._toggle_resolution()
                                 continue
 
-                            # Auto toggle (click the area to toggle)
-                            if hasattr(self, '_settings_auto_rect') and self._settings_auto_rect.collidepoint(event.pos):
-                                self.isAuto = not self.isAuto
-                                continue
+                            # Auto control removed
 
                             # Game slider
                             if hasattr(self, "_game_limit_slider_rect") and self._game_limit_slider_rect.collidepoint(event.pos):

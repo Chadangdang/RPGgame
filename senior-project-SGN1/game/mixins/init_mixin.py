@@ -233,7 +233,7 @@ class GameMainInitMixin:
         self._instr_button_hovered = False
         # Instructions popup state + geometry
         self._instr_popup_open = False
-        instr_w, instr_h = 760, 520
+        instr_w, instr_h = 960, 700
         instr_x = (WIDTH - instr_w) // 2
         instr_y = (HEIGHT - instr_h) // 2
         self._instr_popup_rect = pygame.Rect(instr_x, instr_y, instr_w, instr_h)
@@ -250,6 +250,37 @@ class GameMainInitMixin:
                 '2. Choose an AI model from the list.',
                 '3. Click "Select" to apply the chosen AI model.',
             ]
+
+        # Instruction popup supports two pages: 'game' and 'import'
+        self._instr_page = 'game'  # 'game' | 'import'
+        # Import instructions default to README content/fallback
+        self._instr_import_lines = list(getattr(self, '_instr_lines', []))
+        # Basic game instructions (kept here so popup has two pages)
+        self._instr_game_lines = [
+            'Game Instructions.',
+            '',
+            'Controls:',
+            ' - Z / Left Click : Select',
+            ' - X / Right Click : Cancel',
+            ' - A : Toggle Auto setting during matches',
+            ' - Enter : Start the game / confirm selection',
+            '',
+            'Gameplay:',
+            ' - Select units, move and use actions to defeat the enemy.',
+            ' - Win rounds to capture objectives and win matches.',
+            ' - Use the Balance Tweaking settings to change AI behaviour.',
+        ]
+        # AI description page (brief descriptions for available AI types)
+        self._instr_ai_lines = [
+            'AI description',
+            '',
+            'Player Input: Human control via mouse/keyboard.',
+            'Baseline AI: Default heuristic AI used for testing.',
+            'Random AI: Chooses random valid actions.',
+            'Personality Cores AI: Uses personality modules to bias choices.',
+            'Aggressive/Strategic/Survival: Behaviour variants built from personality cores.',
+            'Disable AI: Turns off AI control for a slot.',
+        ]
 
         popup_width, popup_height = 1063, 907
         popup_x = (WIDTH - popup_width) // 2
@@ -292,31 +323,34 @@ class GameMainInitMixin:
         self._settings_label_x = base_x
         value_x = base_x + 260
         self._settings_value_x = value_x
-        # Auto toggle area (text + value)
-        self._settings_auto_rect = pygame.Rect(self._settings_label_x, base_y, 200, 32)
+        # compute slider width so it ends at the same right edge as the main buttons
+        btn_width = self._settings_popup_rect.width - 280
+        btn_right = base_x + btn_width
+        gap_to_slider = 68
+        slider_w = max(40, btn_right - (value_x + gap_to_slider))
 
-        # Game limit (above match limit)
+        # Game limit (above match limit) — Auto row removed so controls start at base_y
         self.game_limit = AUTO_GAME_LIMIT
         self._game_limit_min = 1
         self._game_limit_max = 10
-        # move game limit further down to avoid overlapping the Auto row
-        self._game_limit_box_rect = pygame.Rect(value_x, base_y + 48, 58, 25)
+        # place game limit at the top of the control group
+        self._game_limit_box_rect = pygame.Rect(value_x, base_y, 58, 25)
         self._game_limit_knob_width = 16
         self._game_limit_knob_height = 16
         game_slider_y = self._game_limit_box_rect.centery - self._game_limit_knob_height // 2
-        self._game_limit_slider_rect = pygame.Rect(value_x + 68, game_slider_y, 220, self._game_limit_knob_height)
+        self._game_limit_slider_rect = pygame.Rect(value_x + gap_to_slider, game_slider_y, slider_w, self._game_limit_knob_height)
         self._game_limit_slider_dragging = False
 
         # Match limit (below game limit)
         self.match_limit = AUTO_MATCH_LIMIT
         self._match_limit_min = 1
         self._match_limit_max = 10
-        # place match limit below the game limit with extra spacing
-        self._match_limit_box_rect = pygame.Rect(value_x, base_y + 48 + 72, 58, 25)
+        # place match limit below the game limit with same spacing
+        self._match_limit_box_rect = pygame.Rect(value_x, base_y + 72, 58, 25)
         self._match_limit_knob_width = 16
         self._match_limit_knob_height = 16
         match_slider_y = self._match_limit_box_rect.centery - self._match_limit_knob_height // 2
-        self._match_limit_slider_rect = pygame.Rect(value_x + 68, match_slider_y, 220, self._match_limit_knob_height)
+        self._match_limit_slider_rect = pygame.Rect(value_x + gap_to_slider, match_slider_y, slider_w, self._match_limit_knob_height)
         self._match_limit_slider_dragging = False
 
         # --- Endgame popup geometry ---

@@ -397,22 +397,15 @@ class GameMainRenderMixin:
                     label_x = getattr(self, '_settings_label_x', self._settings_popup_rect.x + 140)
                     value_x = getattr(self, '_settings_value_x', label_x + 260)
 
-                    # Auto
-                    auto_label_surface = self.font_menu_label.render("Auto:", False, (0, 0, 0))
-                    auto_label_pos = (label_x, self._settings_auto_rect.y)
-                    self.screen.blit(auto_label_surface, auto_label_pos)
-                    auto_value_text = "True" if self.isAuto else "False"
-                    auto_value_surface = self.font_menu_label.render(auto_value_text, False, (0, 197, 7) if self.isAuto else (200, 0, 0))
-                    auto_value_pos = (value_x, self._settings_auto_rect.y)
-                    self.screen.blit(auto_value_surface, auto_value_pos)
+                    # Auto control removed; controls begin here
 
                     # Game limit
-                    game_label = self.font_menu_label.render("Game Limit:", False, (0, 0, 0))
-                    game_label_pos = (label_x, self._game_limit_box_rect.y - 6)
+                    game_label = self.font_sm.render("Game Limit:", False, (0, 0, 0))
+                    game_label_pos = (label_x, self._game_limit_box_rect.y - 8)
                     self.screen.blit(game_label, game_label_pos)
                     pygame.draw.rect(self.screen, (245, 245, 245), self._game_limit_box_rect)
                     pygame.draw.rect(self.screen, (0, 0, 0), self._game_limit_box_rect, 1)
-                    game_value_surface = self.font_s.render(str(self.game_limit), False, (0, 0, 0))
+                    game_value_surface = self.font_sm.render(str(self.game_limit), False, (0, 0, 0))
                     game_value_rect = game_value_surface.get_rect(center=self._game_limit_box_rect.center)
                     self.screen.blit(game_value_surface, game_value_rect)
 
@@ -425,12 +418,12 @@ class GameMainRenderMixin:
                     pygame.draw.rect(self.screen, (0, 0, 0), knob_rect, 1)
 
                     # Match limit
-                    match_label = self.font_menu_label.render("Match Limit:", False, (0, 0, 0))
-                    match_label_pos = (label_x, self._match_limit_box_rect.y - 6)
+                    match_label = self.font_sm.render("Match Limit:", False, (0, 0, 0))
+                    match_label_pos = (label_x, self._match_limit_box_rect.y - 8)
                     self.screen.blit(match_label, match_label_pos)
                     pygame.draw.rect(self.screen, (245, 245, 245), self._match_limit_box_rect)
                     pygame.draw.rect(self.screen, (0, 0, 0), self._match_limit_box_rect, 1)
-                    match_value_surface = self.font_s.render(str(self.match_limit), False, (0, 0, 0))
+                    match_value_surface = self.font_sm.render(str(self.match_limit), False, (0, 0, 0))
                     value_rect = match_value_surface.get_rect(center=self._match_limit_box_rect.center)
                     self.screen.blit(match_value_surface, value_rect)
 
@@ -542,36 +535,140 @@ class GameMainRenderMixin:
                 close_text = self.font_s.render('X', False, (0, 0, 0))
                 self.screen.blit(close_text, close_text.get_rect(center=self._instr_popup_close_rect.center))
 
-                # Title
-                title = self.font_m.render('Instructions', False, (0, 0, 0))
-                self.screen.blit(title, title.get_rect(center=(self._instr_popup_rect.centerx, self._instr_popup_rect.y + 48)))
+                # Title icon: match appearance of the circular 'i' button next to Import AI
+                icon_center = (self._instr_popup_rect.centerx, self._instr_popup_rect.y + 48)
+                icon_radius = 24
+                icon_fill = (234, 234, 200)
+                pygame.draw.circle(self.screen, icon_fill, icon_center, icon_radius)
+                pygame.draw.circle(self.screen, (0, 0, 0), icon_center, icon_radius, 2)
+                i_surf = self.font_sm.render('i', False, (0, 0, 0))
+                self.screen.blit(i_surf, i_surf.get_rect(center=icon_center))
 
-                # Render README/instruction lines with simple wrapping
+                # Tabs for pages — compute widths so three tabs perfectly fit & center inside popup
+                tab_y = self._instr_popup_rect.y + 80
+                tab_h = 42
+                gap = 24
+                side_padding = 48
+                tab_w = int((self._instr_popup_rect.width - side_padding * 2 - gap * 2) / 3)
+                start_x = self._instr_popup_rect.x + (self._instr_popup_rect.width - (tab_w * 3 + gap * 2)) // 2
+                game_tab_rect = pygame.Rect(start_x, tab_y, tab_w, tab_h)
+                import_tab_rect = pygame.Rect(start_x + tab_w + gap, tab_y, tab_w, tab_h)
+                ai_tab_rect = pygame.Rect(start_x + (tab_w + gap) * 2, tab_y, tab_w, tab_h)
+                mouse_pos = pygame.mouse.get_pos()
+                # draw tabs
+                game_active = getattr(self, '_instr_page', 'game') == 'game'
+                import_active = getattr(self, '_instr_page', 'game') == 'import'
+                ai_active = getattr(self, '_instr_page', 'game') == 'ai'
+                g_fill = (246, 242, 234) if game_active else (235, 235, 235)
+                i_fill = (246, 242, 234) if import_active else (235, 235, 235)
+                a_fill = (246, 242, 234) if ai_active else (235, 235, 235)
+                pygame.draw.rect(self.screen, g_fill, game_tab_rect, border_radius=8)
+                pygame.draw.rect(self.screen, (0, 0, 0), game_tab_rect, 2, border_radius=8)
+                pygame.draw.rect(self.screen, i_fill, import_tab_rect, border_radius=8)
+                pygame.draw.rect(self.screen, (0, 0, 0), import_tab_rect, 2, border_radius=8)
+                pygame.draw.rect(self.screen, a_fill, ai_tab_rect, border_radius=8)
+                pygame.draw.rect(self.screen, (0, 0, 0), ai_tab_rect, 2, border_radius=8)
+                # Render tab labels, shrinking font if necessary to fit inside each tab
+                def render_tab_text(text: str, rect: pygame.Rect, bold: bool = False):
+                    padding_inside = 12
+                    max_text_w = max(8, rect.width - padding_inside * 2)
+                    # try sizes starting from font_s size down to 10
+                    base_size = 30 if hasattr(self, 'font_s') else 24
+                    for size in range(base_size, 9, -1):
+                        tmp_font = pygame.font.Font('resource/font.ttf', size)
+                        if bold:
+                            try:
+                                tmp_font.set_bold(True)
+                            except Exception:
+                                pass
+                        if tmp_font.size(text)[0] <= max_text_w:
+                            surf = tmp_font.render(text, False, (0, 0, 0))
+                            self.screen.blit(surf, surf.get_rect(center=rect.center))
+                            return
+                    # fallback: render with smallest size
+                    tmp_font = pygame.font.Font('resource/font.ttf', 10)
+                    if bold:
+                        try:
+                            tmp_font.set_bold(True)
+                        except Exception:
+                            pass
+                    surf = tmp_font.render(text, False, (0, 0, 0))
+                    self.screen.blit(surf, surf.get_rect(center=rect.center))
+
+                render_tab_text('Game Instruction', game_tab_rect)
+                render_tab_text('Import Instruction', import_tab_rect)
+                render_tab_text('AI Description', ai_tab_rect)
+
+                # Render selected page lines with simple wrapping
                 padding = 28
                 text_x = self._instr_popup_rect.x + padding
-                text_y = self._instr_popup_rect.y + 96
+                text_y = self._instr_popup_rect.y + 140
                 max_w = self._instr_popup_rect.width - padding * 2
-                line_h = self.font_ss.get_height() + 6
+                # choose a font size that fits the available area (try from 14 down to 10)
+                available_h = self._instr_popup_rect.bottom - padding - text_y
+                if getattr(self, '_instr_page', 'game') == 'game':
+                    source_lines = getattr(self, '_instr_game_lines', [])
+                elif getattr(self, '_instr_page', 'game') == 'import':
+                    source_lines = getattr(self, '_instr_import_lines', [])
+                else:
+                    source_lines = getattr(self, '_instr_ai_lines', [])
+                chosen_font = self.font_ss
+                chosen_size = self.font_ss.get_linesize()
+                for size in (20, 18, 16, 14, 13, 12, 11, 10):
+                    tmp_font = pygame.font.Font('resource/font.ttf', size)
+                    tmp_line_h = tmp_font.get_height() + 6
+                    # estimate required height for wrapped text
+                    y_est = 0
+                    fits = True
+                    for raw_line in source_lines:
+                        words = raw_line.split(' ')
+                        cur = ''
+                        for w in words:
+                            test = (cur + ' ' + w).strip()
+                            if tmp_font.size(test)[0] <= max_w:
+                                cur = test
+                            else:
+                                y_est += tmp_line_h
+                                cur = w
+                                if y_est + tmp_line_h > available_h:
+                                    fits = False
+                                    break
+                        if not fits:
+                            break
+                        if cur:
+                            y_est += tmp_line_h
+                            if y_est > available_h:
+                                fits = False
+                                break
+                    if fits:
+                        chosen_font = tmp_font
+                        line_h = tmp_line_h
+                        break
+                else:
+                    # fallback to smallest tried size
+                    chosen_font = pygame.font.Font('resource/font.ttf', 10)
+                    line_h = chosen_font.get_height() + 6
+
                 y = text_y
-                for raw_line in getattr(self, '_instr_lines', []):
-                    # simple word-wrap
+                for raw_line in source_lines:
+                    # simple word-wrap using chosen_font
                     words = raw_line.split(' ')
                     cur = ''
                     for w in words:
                         test = (cur + ' ' + w).strip()
-                        if self.font_ss.size(test)[0] <= max_w:
+                        if chosen_font.size(test)[0] <= max_w:
                             cur = test
                         else:
                             if y + line_h > self._instr_popup_rect.bottom - padding:
                                 break
-                            surf = self.font_ss.render(cur, False, (10, 10, 10))
+                            surf = chosen_font.render(cur, False, (10, 10, 10))
                             self.screen.blit(surf, (text_x, y))
                             y += line_h
                             cur = w
                     if cur:
                         if y + line_h > self._instr_popup_rect.bottom - padding:
                             break
-                        surf = self.font_ss.render(cur, False, (10, 10, 10))
+                        surf = chosen_font.render(cur, False, (10, 10, 10))
                         self.screen.blit(surf, (text_x, y))
                         y += line_h
 
