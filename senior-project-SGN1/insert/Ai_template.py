@@ -76,49 +76,59 @@ class MyCustomAI(AIFramework):  # Optional: rename class if your loader supports
 
     def activate(self, activationNo: int):
         """
-        Called once for each character in your team.
+        Control one character's move + action for this activation.
 
-        This is the MOST IMPORTANT function.
-        You must decide:
-        - Where the character moves
-        - What action the character uses
+        When it is called:
+            - Once per activatable character in your team each turn.
+        What to implement:
+            1) Choose movement destination.
+            2) Choose action/skill target.
+            3) Execute exactly one final action path (act or pass).
+
+        Args:
+            activationNo: Index of the current character in `self.own_team`.
         """
 
         chara = self.own_team[activationNo]
 
-        # =========================
-        # 🔰 BASIC EXAMPLE (PASS)
-        # =========================
+        # -------------------------------------------------
+        # STEP 1: CHOOSE MOVEMENT (implement your logic here)
+        # -------------------------------------------------
+        # Example (commented):
+        # movement_map = self.field.getMovement(chara)
+        # best_cell = ...  # choose a (row, col) from movement_map
+        # self.moveCharaTo(chara, best_cell)
+
+        # -------------------------------------------------
+        # STEP 2: CHOOSE ACTION (implement your logic here)
+        # -------------------------------------------------
+        # Example (commented):
+        # action_no = 0
+        # target = ...
+        # modifier = None
+        # self.useCharaAction(chara, target, action_no, modifier)
+
+        # -------------------------------------------------
+        # DEFAULT SAFE BEHAVIOR
+        # -------------------------------------------------
+        # If you do not choose an action yet, pass this character's action.
+        # This keeps the template runnable for beginners.
         self.passCharaAction(chara)
 
-        # =========================
-        # 💡 USEFUL FUNCTIONS
-        # =========================
+        # ===== HELPFUL FUNCTIONS =====
+        # moveCharaTo(chara, (row, col))
+        # useCharaAction(chara, target, actionNo, modifier)
+        # passCharaAction(chara)
+        # field.getMovement(chara)
+        # field.getActionArea(chara, actionNo)
 
-        # Move character:
-        # self.moveCharaTo(chara, (row, col))
-
-        # Use action:
-        # self.useCharaAction(chara, target, actionNo, modifier)
-
-        # Get movement range:
-        # movementMap = self.field.getMovement(chara)
-
-        # Get attack range:
-        # actionMap = self.field.getActionArea(chara, actionNo)
-
-        # Get enemy units:
+        # Additional useful references (optional):
         # enemies = self.enemy_team
 
-        # Get ally units:
         # allies = self.own_team
 
-        # Find character at position:
         # Character.getCharacterByGrid((row, col))
+        # terrain_type = self.terrain[row][col]
 
-        # Terrain info:
-        # self.terrain[row][col]
-
-        # =========================
-
+       # Required final update: tells framework whether all allies acted.
         self.turnFinished = self.checkCharaActed()
