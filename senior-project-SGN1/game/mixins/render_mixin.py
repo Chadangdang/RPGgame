@@ -703,7 +703,8 @@ class GameMainRenderMixin:
             base_y = self.pause_game_button_rect.bottom + 10 if show_pause_button else 40
             unit_rect = pygame.Rect(left_x, base_y, left_w, 140)
             terrain_rect = pygame.Rect(left_x, unit_rect.bottom + 10, left_w, 140)
-            objective_rect = pygame.Rect(left_x, terrain_rect.bottom + 10, left_w, 220)
+            # Reduce height so the active-player banner (positioned below) doesn't overlap bottom UI
+            objective_rect = pygame.Rect(left_x, terrain_rect.bottom + 10, left_w, 160)
 
             # Unit Info
             pygame.draw.rect(self.screen, (0, 0, 0), unit_rect, 2)
@@ -717,15 +718,15 @@ class GameMainRenderMixin:
                 self.screen.blit(unit_info, unit_info.get_rect(topleft=(unit_rect.x + 10, unit_rect.y + 65)))
                 unit_info = self.font_s.render(f"Movement : {chara.template['movement']}", False, (0, 0, 0))
                 self.screen.blit(unit_info, unit_info.get_rect(topleft=(unit_rect.x + 10, unit_rect.y + 90)))
-                if chara in Character.team1_list:
-                    if not chara.moved:
-                        text = "Movement available"
-                    elif not chara.acted:
-                        text = "Action available"
-                    else:
-                        text = "Turn completed"
-                    unit_info = self.font_s.render(text, False, (0, 0, 0))
-                    self.screen.blit(unit_info, unit_info.get_rect(topleft=(unit_rect.x + 10, unit_rect.y + 115)))
+                # Show status regardless of hard-coded team checks; interpret moved/acted flags for any hovered unit
+                if not chara.moved:
+                    text = "Movement available"
+                elif not chara.acted:
+                    text = "Action available"
+                else:
+                    text = "Turn completed"
+                unit_info = self.font_s.render(text, False, (0, 0, 0))
+                self.screen.blit(unit_info, unit_info.get_rect(topleft=(unit_rect.x + 10, unit_rect.y + 115)))
 
             # Terrain Info
             pygame.draw.rect(self.screen, (0, 0, 0), terrain_rect, 2)
@@ -878,6 +879,19 @@ class GameMainRenderMixin:
                 pass
 
             # Round Indicator at corner
+            # Active player banner (top-right)
+            try:
+                active_team = getattr(self.GameMaster.activeAI, 'team', getattr(self.GameMaster, 'turn', 1))
+                banner_text = f'P{active_team} Turn'
+                banner_color = getattr(self.GameMaster.activeAI, 'color', LOG_COLOR_P1 if active_team == 1 else LOG_COLOR_P2)
+                # Position banner below the Objective Info panel on the left column
+                banner_rect = pygame.Rect(left_x, objective_rect.bottom + 8, left_w, 36)
+                pygame.draw.rect(self.screen, banner_color, banner_rect)
+                pygame.draw.rect(self.screen, (0, 0, 0), banner_rect, 2)
+                bt = self.font_s.render(banner_text, False, (255, 255, 255))
+                self.screen.blit(bt, bt.get_rect(center=banner_rect.center))
+            except Exception:
+                pass
             round_text = self.font_s.render(f"Round : {self.round}", False, (0, 0, 0))
             text_rect = round_text.get_rect(topright=(1230, 697))
             self.screen.blit(round_text, text_rect)

@@ -158,26 +158,22 @@ class PlayerInput(AIFramework):
                 case 0: # Default | Z: Select character, X: None
                     if key == KEYZ:
                         if self.field.select_cursor.getChara() is None:  # No Character is selected  (This happpens first)
-                            for chara in self.own_team + self.enemy_team:
+                            # Only allow selecting own-team units when using keyboard input
+                            for chara in self.own_team:
                                 if self.field.hover_cursor.grid == chara.grid:
                                     if chara.acted:
                                         pass
                                     else:
                                         self.field.select_cursor.moveTo(self.field.hover_cursor.grid)
                                         self.field.select_cursor.show = True
-                                        if self.field.select_cursor.getChara() in self.own_team:
-                                            if chara.moved:
-                                                Cursor.state = 2
-                                                Cursor.selected_action = 0
-                                                self.field.hover_cursor.show = False
-                                            else:
-                                                Cursor.state = 1
-                                                self.field.getMovement(chara)
-
-                                        else:  # Enemy
-                                            Cursor.state = 3
+                                        if chara.moved:
+                                            Cursor.state = 2
+                                            Cursor.selected_action = 0
+                                            self.field.hover_cursor.show = False
+                                        else:
+                                            Cursor.state = 1
                                             self.field.getMovement(chara)
-                                        break
+                                    break
                     elif key == KEYX:
                         pass
                 case 1: # Select tile for movement | Z: Confirm, X: Cancel
@@ -403,10 +399,14 @@ class PerfectPlay(AIFramework):
         ### Some logic here to remove tiles with enemy_team on them
         #
             enemy_pos = [enemy.grid for enemy in self.enemy_team]   # Get list of enemy team's grid coordinates
-            rows, cols = np.transpose(enemy_pos)    # There is probably a better way to do this
-            enemy_pos_full = np.zeros((GRID_ROWS, GRID_COLS))
-            enemy_pos_full[(rows, cols)] = 1
-            movementMap = np.logical_and(movementMap, np.logical_not(enemy_pos_full))   # Remove occupied tiles from consideration
+            if enemy_pos:
+                rows, cols = np.transpose(enemy_pos)    # There is probably a better way to do this
+                enemy_pos_full = np.zeros((GRID_ROWS, GRID_COLS))
+                enemy_pos_full[(rows, cols)] = 1
+                movementMap = np.logical_and(movementMap, np.logical_not(enemy_pos_full))   # Remove occupied tiles from consideration
+            else:
+                # No enemies present; nothing to remove from movementMap
+                pass
         #
         ###
 

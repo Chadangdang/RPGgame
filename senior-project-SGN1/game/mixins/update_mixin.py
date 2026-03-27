@@ -658,9 +658,12 @@ class GameMainUpdateMixin:
                                 # Try selecting a character at this tile
                                 chara = Character.getCharacterByGrid(grid)
                                 if chara is not None and not chara.acted:
-                                    self.field.select_cursor.moveTo(grid)
-                                    self.field.select_cursor.show = True
-                                    if chara in Character.team1_list:
+                                    # Determine which team is the active (human) team and treat allies/enemies accordingly
+                                    active_own = getattr(self.GameMaster.activeAI, 'own_team', Character.team1_list)
+                                    if chara in active_own:
+                                        # Only select allied units
+                                        self.field.select_cursor.moveTo(grid)
+                                        self.field.select_cursor.show = True
                                         if chara.moved:
                                             Cursor.state = 2
                                             Cursor.selected_action = 0
@@ -669,7 +672,7 @@ class GameMainUpdateMixin:
                                             Cursor.state = 1
                                             self.field.getMovement(chara)
                                     else:
-                                        # enemy unit: show its movement preview and block actions
+                                        # enemy unit: show its movement preview and block actions but do not select
                                         Cursor.state = 3
                                         self.field.getMovement(chara)
 
@@ -693,8 +696,9 @@ class GameMainUpdateMixin:
                                         action = chara.template["actions"][Cursor.selected_action]
                                         # Heal actions (or actions with a 'heal' field)
                                         if action.get("action_type", "").lower() == "heal" or action.get("heal") is not None:
-                                            # Only allow healing allies
-                                            if target is not None and target in Character.team1_list:
+                                            # Only allow healing allies (relative to the active team)
+                                            active_own = getattr(self.GameMaster.activeAI, 'own_team', Character.team1_list)
+                                            if target is not None and target in active_own:
                                                 # Execute via the active human AI to keep logs/flags consistent
                                                 self.GameMaster.activeAI.useCharaAction(chara, target, Cursor.selected_action, 0)
                                                 # Reset visuals and state (match keyboard path)
@@ -708,7 +712,9 @@ class GameMainUpdateMixin:
                                                 self.GameMaster.activeAI.turnFinished = self.GameMaster.activeAI.checkCharaActed()
                                         else:
                                             # Default: offensive actions targeting enemies
-                                            if target is not None and target in Character.team2_list:
+                                            # Default: offensive actions targeting enemies (relative to the active team)
+                                            active_enemy = getattr(self.GameMaster.activeAI, 'enemy_team', Character.team2_list)
+                                            if target is not None and target in active_enemy:
                                                 if self.field.boxes[target.grid[0]][target.grid[1]].terrain == 1:
                                                     modifier = -2
                                                 else:

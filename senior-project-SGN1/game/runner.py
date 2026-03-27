@@ -7,6 +7,12 @@ from game.controller import GameMain
 def run_game() -> None:
     """Run the main pygame loop using GameMain as the orchestrator."""
     main = GameMain()
+    # expose the running GameMain instance for other modules (e.g. Cursor) to inspect
+    try:
+        import game.state as _state
+        _state.main = main
+    except Exception:
+        pass
     clock = pygame.time.Clock()
 
     while True:

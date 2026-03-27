@@ -30,11 +30,37 @@ class Cursor:
     def __init__(self, screen: pygame.Surface, size: tuple[int, int], bound: tuple[int, int], grid: tuple[int, int], show: bool) -> None:
         self.screen = screen
         self.size = size
-        self.show = show
+        self._show = show
         self.image: pygame.Surface
         self.grid: tuple[int, int]
         self.bound = bound
         self.moveTo(grid)
+
+    @property
+    def show(self) -> bool:
+        return getattr(self, '_show', False)
+
+    @show.setter
+    def show(self, val: bool) -> None:
+        # If attempting to show, enforce that select cursor may only show when the
+        # selected character (if any) belongs to the active player's team.
+        try:
+            if val:
+                from Character import Character as _Character
+                import game.state as _state
+                main = getattr(_state, 'main', None)
+                if main is not None:
+                    gm = getattr(main, 'GameMaster', None)
+                    active_own = getattr(getattr(gm, 'activeAI', None), 'own_team', None)
+                    char = _Character.getCharacterByGrid(self.grid)
+                    if char is not None and active_own is not None and char not in active_own:
+                        # Block showing select cursor for non-active team's unit
+                        self._show = False
+                        return
+            self._show = bool(val)
+        except Exception:
+            # On any error, fall back to basic behavior
+            self._show = bool(val)
 
     def moveTo(self, grid: tuple[int, int]) -> None:
         self.grid = Cursor.gridBounding(grid, self.bound)
