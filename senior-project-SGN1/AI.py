@@ -530,6 +530,7 @@ class PersonalityCores(AIFramework):
         # p_weights[0] += 1
 
         n = (own_team_HP / (enemy_team_HP + 0.000000000000001))
+        n = min(n, 10)
         p_weights[0] = (1.5 ** n) - 0.5
 
         # SOME CONDITION FOR SURVIVAL
@@ -544,7 +545,7 @@ class PersonalityCores(AIFramework):
             if own_unit.template['curHP'] <= own_unit.template['maxHP'] * 0.75:
                 n += 1
         n += 2 * (3 - c)
-
+        n = min(n, 10)
         p_weights[1] = (1.5 ** n) - 0.5         # Arbitrary formula. <1 at n=0, 1 at n=1, >1 at n>1
 
         # SOME CONDITION FOR AGGRESSIVE
@@ -557,7 +558,7 @@ class PersonalityCores(AIFramework):
             if enemy_unit.template['curHP'] <= enemy_unit.template['maxHP'] * 0.5:
                 n += 1
         n += 2 * (3 - c)
-
+        n = min(n, 10)
         p_weights[2] = (1.5 ** n) - 0.5
 
         # print('Board analyzed - Displaying personality weights' + f' - team {self.team}')
@@ -620,11 +621,12 @@ class PersonalityCores(AIFramework):
             ### Some logic here to remove tiles with enemy_team on them
             #
             enemy_pos = [enemy.grid for enemy in self.enemy_team]  # Get list of enemy team's grid coordinates
-            rows, cols = np.transpose(enemy_pos)  # There is probably a better way to do this
-            enemy_pos_full = np.zeros((GRID_ROWS, GRID_COLS))
-            enemy_pos_full[(rows, cols)] = 1
-            movementMap = np.logical_and(movementMap,
-                                        np.logical_not(enemy_pos_full))  # Remove occupied tiles from consideration
+            if enemy_pos:
+                rows, cols = np.transpose(enemy_pos)  # There is probably a better way to do this
+                enemy_pos_full = np.zeros((GRID_ROWS, GRID_COLS))
+                enemy_pos_full[(rows, cols)] = 1
+                movementMap = np.logical_and(movementMap,
+                                            np.logical_not(enemy_pos_full))  # Remove occupied tiles from consideration
             #
             ###
 
@@ -760,3 +762,11 @@ class SurvivalPersonalityCoresAI(PersonalityCores):
             Personality('Survival', (0.0, 0.0, 1.0)),
             Personality('Survival', (0.0, 0.0, 1.0))
         ]
+
+
+class KillOneByOneAI(AIFramework):
+    """Hard tactical AI focused on kill confirms with strict threat discipline."""
+
+    def __init__(self, team) -> None:
+        super().__init__(team)
+

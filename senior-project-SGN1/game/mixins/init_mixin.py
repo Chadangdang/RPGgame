@@ -26,6 +26,7 @@ AI_SELECTION_LABELS = (
     'Aggressive Personality Cores AI',
     'Strategic Personality Cores AI',
     'Survival Personality Cores AI',
+    'Kill One By One AI',
     'Disable AI'
 )
 
@@ -233,7 +234,7 @@ class GameMainInitMixin:
         self._instr_button_hovered = False
         # Instructions popup state + geometry
         self._instr_popup_open = False
-        instr_w, instr_h = 960, 700
+        instr_w, instr_h = 1063, 907
         instr_x = (WIDTH - instr_w) // 2
         instr_y = (HEIGHT - instr_h) // 2
         self._instr_popup_rect = pygame.Rect(instr_x, instr_y, instr_w, instr_h)
@@ -244,6 +245,7 @@ class GameMainInitMixin:
                 self._instr_lines = [ln.rstrip() for ln in f.readlines()]
         except Exception:
             self._instr_lines = [
+                '',
                 'AI Import Instructions.',
                 '',
                 '1. Click the "Import AI" button to open the AI selection dialog.',
@@ -257,6 +259,7 @@ class GameMainInitMixin:
         self._instr_import_lines = list(getattr(self, '_instr_lines', []))
         # Basic game instructions (kept here so popup has two pages)
         self._instr_game_lines = [
+            '',
             'Game Instructions.',
             '',
             'Controls:',
@@ -272,6 +275,7 @@ class GameMainInitMixin:
         ]
         # AI description page (brief descriptions for available AI types)
         self._instr_ai_lines = [
+            '',
             'AI description',
             '',
             'Player Input: Human control via mouse/keyboard.',

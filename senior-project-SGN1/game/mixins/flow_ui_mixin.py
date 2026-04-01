@@ -26,6 +26,7 @@ AI_SELECTION_LABELS = (
     'Aggressive Personality Cores AI',
     'Strategic Personality Cores AI',
     'Survival Personality Cores AI',
+    'Kill One By One AI',
     'Disable AI'
 )
 
@@ -420,7 +421,8 @@ class GameMainFlowUiMixin:
             4: 4,  # Aggressive Personality Cores AI
             5: 5,  # Strategic Personality Cores AI
             6: 6,  # Survival Personality Cores AI
-            7: 7,  # Disable AI
+            7: 7,  # Kill One By One AI (Hard)
+            8: 8,  # Disable AI
         }
         return row_to_team.get(int(row_index), 0)
 
