@@ -10,6 +10,7 @@ AI_list: list[type[AIFramework]] = [
     AggressivePersonalityCoresAI,
     StrategicPersonalityCoresAI,
     SurvivalPersonalityCoresAI,
+    KillOneByOneAI,
     DisableAI,
 ]
 

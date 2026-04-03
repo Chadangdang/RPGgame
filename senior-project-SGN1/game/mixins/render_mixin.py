@@ -23,6 +23,7 @@ AI_SELECTION_LABELS = (
     'Aggressive',
     'Strategic',
     'Survival',
+    'Kill One By One AI',
     'Disable AI'
 )
 
@@ -522,6 +523,18 @@ class GameMainRenderMixin:
                     border_width = 4 if is_selected else 2
                     pygame.draw.rect(self.screen, border_color, rect, border_width)
 
+                    # Render map option label (e.g., map number or Random) centered in each box.
+                    option_label = self._map_option_labels[idx]
+                    if option_label.lower() != 'random':
+                        option_label = str(option_label)
+                    label_font = self.font_sm
+                    if label_font.size(option_label)[0] > rect.width - 12:
+                        label_font = self.font_s
+                    if label_font.size(option_label)[0] > rect.width - 12:
+                        label_font = self.font_ss
+                    label_surface = label_font.render(option_label, False, (0, 0, 0))
+                    self.screen.blit(label_surface, label_surface.get_rect(center=rect.center))
+
             # Instructions popup (in-game)
             if getattr(self, '_instr_popup_open', False):
                 overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
@@ -621,6 +634,11 @@ class GameMainRenderMixin:
                     y_est = 0
                     fits = True
                     for raw_line in source_lines:
+                        if str(raw_line).strip() == '':
+                            y_est += tmp_line_h
+                            if y_est > available_h:
+                                fits = False
+                            continue
                         words = raw_line.split(' ')
                         cur = ''
                         for w in words:
@@ -651,6 +669,11 @@ class GameMainRenderMixin:
 
                 y = text_y
                 for raw_line in source_lines:
+                    if str(raw_line).strip() == '':
+                        y += line_h
+                        if y > self._instr_popup_rect.bottom - padding:
+                            break
+                        continue
                     # simple word-wrap using chosen_font
                     words = raw_line.split(' ')
                     cur = ''

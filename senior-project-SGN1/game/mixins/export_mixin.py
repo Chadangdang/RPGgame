@@ -23,6 +23,7 @@ AI_SELECTION_LABELS = (
     'Aggressive Personality Cores AI',
     'Strategic Personality Cores AI',
     'Survival Personality Cores AI',
+    'Kill One By One AI',
     'Disable AI'
 )
 
