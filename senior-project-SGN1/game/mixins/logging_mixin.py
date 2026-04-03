@@ -284,13 +284,13 @@ class GameMainLoggingMixin:
             winner = kwargs.get("winner", "")
             p1_matches = kwargs.get("p1_matches", 0)
             p2_matches = kwargs.get("p2_matches", 0)
-
-            self.log(f"GAME : Game {game_number} ends", tag_color("GAME"), time_elapsed=time_elapsed)
-            self.log(f"SUMMARY : Game winner -> {winner}", tag_color("SUMMARY"), time_elapsed=time_elapsed, winner=winner)
-            self.log(f"SUMMARY : P1 won {p1_matches} matches", tag_color("SUMMARY"), time_elapsed=time_elapsed)
-            self.log(f"SUMMARY : P2 won {p2_matches} matches", tag_color("SUMMARY"), time_elapsed=time_elapsed)
-            self.log(f"SUMMARY : Game {game_number} finished", tag_color("SUMMARY"), time_elapsed=time_elapsed)
-            self.log(f"GAME : {GAME_BAR}", tag_color("GAME"), time_elapsed=time_elapsed)
+            # Ensure numeric `game` field matches the message text (avoid mismatch after increment)
+            self.log(f"GAME : Game {game_number} ends", tag_color("GAME"), time_elapsed=time_elapsed, game=int(game_number or getattr(self, 'current_game', 1)))
+            self.log(f"SUMMARY : Game winner -> {winner}", tag_color("SUMMARY"), time_elapsed=time_elapsed, game=int(game_number or getattr(self, 'current_game', 1)), winner=winner)
+            self.log(f"SUMMARY : P1 won {p1_matches} matches", tag_color("SUMMARY"), time_elapsed=time_elapsed, game=int(game_number or getattr(self, 'current_game', 1)))
+            self.log(f"SUMMARY : P2 won {p2_matches} matches", tag_color("SUMMARY"), time_elapsed=time_elapsed, game=int(game_number or getattr(self, 'current_game', 1)))
+            self.log(f"SUMMARY : Game {game_number} finished", tag_color("SUMMARY"), time_elapsed=time_elapsed, game=int(game_number or getattr(self, 'current_game', 1)))
+            self.log(f"GAME : {GAME_BAR}", tag_color("GAME"), time_elapsed=time_elapsed, game=int(game_number or getattr(self, 'current_game', 1)))
             return
         elif event == "move":
             team = int(kwargs.get("team") or 0)

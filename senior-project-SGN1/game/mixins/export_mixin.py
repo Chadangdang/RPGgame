@@ -131,6 +131,17 @@ class GameMainExportMixin:
                 return map_value[4:].strip()
             return map_value
 
+        def sanitize_for_excel(value):
+            if value is None:
+                return ""
+            s = str(value)
+            if not s:
+                return ""
+            # Prevent Excel from interpreting leading characters as formulas or causing removals
+            if s[0] in ('=', '+', '-', '@'):
+                return "'" + s
+            return s
+
         try:
             if not self.game_log:
                 print("No game log data to export.")
@@ -152,8 +163,9 @@ class GameMainExportMixin:
             summary_value_font = Font(bold=False, color="000000")
             summary_value_fill = PatternFill(fill_type=None)
 
-            # Oldest -> newest already preserved by structured append order.
-            ordered_logs = [entry for entry in self.game_log if isinstance(entry, dict)]
+            # Ensure logs are exported oldest -> newest (top -> down in sheets).
+            # `self.game_log` stores newest first (insert(0,...)), so reverse it here.
+            ordered_logs = [entry for entry in reversed(self.game_log) if isinstance(entry, dict)]
             if not ordered_logs:
                 print("No structured game log data to export.")
                 return
@@ -214,26 +226,107 @@ class GameMainExportMixin:
                 game_data["obj_p1"] = max(game_data["obj_p1"], as_int(entry.get("objective_control_p1", 0), 0))
                 game_data["obj_p2"] = max(game_data["obj_p2"], as_int(entry.get("objective_control_p2", 0), 0))
 
-            total_games = len(games_data)
+            # Respect configured game limit: export only games up to the configured limit
+            configured_limit = int(getattr(self, 'game_limit', 0) or 0)
+            all_game_keys = sorted(games_data.keys())
+            if configured_limit > 0:
+                export_game_keys = [k for k in all_game_keys if k <= configured_limit]
+            else:
+                export_game_keys = all_game_keys
+
+            # Filter out games that have no player/action rows (these are often empty
+            # placeholder games created by session logic like a logged game_start)
+            def game_has_actions(gdata: dict) -> bool:
+                for e in gdata.get('rows', []):
+                    team = int(e.get('team', 0) or 0)
+                    action_type = str(e.get('action_type', '') or '').lower()
+                    damage = as_int(e.get('damage', 0), 0)
+                    heal = as_int(e.get('heal', 0), 0)
+                    cls = str(e.get('class', '') or '').strip()
+                    if team in (1, 2):
+                        return True
+                    if action_type in ('attack', 'move', 'heal', 'pass', 'ko'):
+                        return True
+                    if damage > 0 or heal > 0:
+                        return True
+                    if cls:
+                        return True
+                return False
+
+            export_game_keys = [k for k in export_game_keys if game_has_actions(games_data.get(k, {}))]
+
+            total_games = len(export_game_keys)
             if total_games == 0:
-                print("No game log data to export.")
+                print("No game log data to export (no games with actions within configured game_limit).")
                 return
 
-            p1_wins = sum(1 for data in games_data.values() if data.get("winner") == "P1")
-            p2_wins = sum(1 for data in games_data.values() if data.get("winner") == "P2")
-            winrate_p1 = (p1_wins / total_games * 100.0) if total_games else 0.0
-            winrate_p2 = (p2_wins / total_games * 100.0) if total_games else 0.0
+            # Derive overall game wins from per-game logged match results to be robust
+            p1_wins = 0
+            p2_wins = 0
+            for k in export_game_keys:
+                gd = games_data.get(k, {})
+                # prefer explicit per-game winner when available
+                game_winner = str(gd.get('winner', '') or '').strip().upper()
+                if game_winner:
+                    if 'P1' in game_winner or game_winner.endswith('1') or 'PLAYER 1' in game_winner:
+                        p1_wins += 1
+                        continue
+                    if 'P2' in game_winner or game_winner.endswith('2') or 'PLAYER 2' in game_winner:
+                        p2_wins += 1
+                        continue
+
+                # fallback: count any logged winner fields in this game's rows
+                p1_matches = 0
+                p2_matches = 0
+                for e in gd.get('rows', []):
+                    w_raw = str(e.get('winner', '') or '').strip().upper()
+                    if not w_raw:
+                        continue
+                    if 'P1' in w_raw or w_raw.endswith('1') or 'PLAYER 1' in w_raw:
+                        p1_matches += 1
+                    elif 'P2' in w_raw or w_raw.endswith('2') or 'PLAYER 2' in w_raw:
+                        p2_matches += 1
+                if p1_matches > p2_matches:
+                    p1_wins += 1
+                elif p2_matches > p1_matches:
+                    p2_wins += 1
+            # winrate as fraction (0.66 = 66%) for proper Excel formatting
+            winrate_p1 = (p1_wins / total_games) if total_games else 0.0
+            winrate_p2 = (p2_wins / total_games) if total_games else 0.0
 
             headers = [
-                "No.", "Log", "Match", "Round", "Team", "Time (seconds)", "Class", "Health",
+                "No.", "Log Type", "Log", "Match", "Round", "Team", "Time (seconds)", "Class", "Health",
                 "Position", "Action type", "Action name", "Target Class", "Target Position",
                 "Damage", "Heal", "Target Health before", "Target Health after"
             ]
-            column_widths = [6, 48, 8, 8, 6, 14, 18, 10, 18, 14, 18, 18, 18, 10, 10, 20, 20]
+            # column widths must match headers count
+            column_widths = [6, 12, 36, 8, 8, 6, 14, 18, 10, 18, 14, 18, 18, 18, 10, 10, 20, 20]
             used_titles: set[str] = set()
 
-            first_game_data = games_data[min(games_data.keys())]
-            overall_duration = round(sum(game_data["duration_sum"] for game_data in games_data.values()), 2)
+            # helper to split prefixed log tags (e.g. "MATCH : ...") for CSV clarity
+            def split_log_tag(raw_log: str) -> tuple[str, str]:
+                if raw_log is None:
+                    return "", ""
+                log_str = str(raw_log).strip()
+                if not log_str:
+                    return "", ""
+                # try splitting at first ':' to extract tag
+                parts = log_str.split(':', 1)
+                if len(parts) == 2:
+                    left = parts[0].strip()
+                    right = parts[1].strip()
+                    # treat left as tag when it's short and alphabetic-ish
+                    compact = left.replace(' ', '')
+                    if 0 < len(compact) <= 12 and compact.isalpha():
+                        return compact.upper(), right
+                return "", log_str
+
+            # csv_rows removed; we write cleaned log directly into XLSX
+
+            # Use the filtered export_game_keys for summary metrics
+            first_game_key = min(export_game_keys)
+            first_game_data = games_data[first_game_key]
+            overall_duration = round(sum(games_data[k]["duration_sum"] for k in export_game_keys), 2)
 
             overall_summary_ws = wb.create_sheet(make_sheet_title("Overall_summary", used_titles), index=0)
             overall_summary_ws.column_dimensions['A'].width = 28
@@ -250,10 +343,12 @@ class GameMainExportMixin:
             overall_summary_data = [
                 ("P1 Model", first_game_data["p1_model"] or "Unknown"),
                 ("P2 Model", first_game_data["p2_model"] or "Unknown"),
-                ("Match", total_games),
+                ("Game", total_games),
+                ("P1 Wins", p1_wins),
+                ("P2 Wins", p2_wins),
                 ("Duration (seconds)", overall_duration),
-                ("Win rate P1", f"{winrate_p1:.2f}%"),
-                ("Win rate P2", f"{winrate_p2:.2f}%"),
+                ("Win rate P1", winrate_p1),
+                ("Win rate P2", winrate_p2),
             ]
 
             for row_idx, (metric, value) in enumerate(overall_summary_data, start=2):
@@ -268,8 +363,11 @@ class GameMainExportMixin:
                 value_cell.fill = summary_value_fill
                 value_cell.alignment = Alignment(horizontal="left", vertical="center")
                 value_cell.border = thin_border
+                # format winrate cells as percentage
+                if isinstance(value, float) and 'Win rate' in metric:
+                    value_cell.number_format = '0.00%'
 
-            for game_no in sorted(games_data.keys()):
+            for game_no in sorted(export_game_keys):
                 game_data = games_data[game_no]
 
                 log_ws = wb.create_sheet(make_sheet_title(f"G{game_no}_game_log", used_titles))
@@ -286,9 +384,13 @@ class GameMainExportMixin:
                 for index, entry in enumerate(game_data["rows"], start=1):
                     position = normalize_position(entry.get("position", ""))
                     target_position = normalize_position(entry.get("target_position", ""))
+                    # split log tag into type + cleaned message, then write both into XLSX
+                    raw_log = entry.get("log", "")
+                    log_type, clean_log = split_log_tag(raw_log)
                     row_values = [
                         index,
-                        str(entry.get("log", "")),
+                        log_type,
+                        clean_log,
                         as_int(entry.get("match", 0), 0),
                         as_int(entry.get("round", 0), 0),
                         as_int(entry.get("team", 0), 0),
@@ -305,7 +407,9 @@ class GameMainExportMixin:
                         as_int(entry.get("target_hp_before", 0), 0),
                         as_int(entry.get("target_hp_after", 0), 0),
                     ]
-                    log_ws.append(row_values)
+                    # sanitize string cells to avoid Excel treating them as formulas
+                    sanitized = [sanitize_for_excel(v) if isinstance(v, str) else v for v in row_values]
+                    log_ws.append(sanitized)
                     for col in range(1, len(row_values) + 1):
                         log_ws.cell(row=index + 1, column=col).border = thin_border
 
@@ -325,9 +429,29 @@ class GameMainExportMixin:
                 obj_p1_pct = (game_data["obj_p1"] / total_obj * 100.0) if total_obj else 0.0
                 obj_p2_pct = (game_data["obj_p2"] / total_obj * 100.0) if total_obj else 0.0
 
+                # compute per-game match wins by inspecting any logged winner fields
+                p1_matches_in_game = 0
+                p2_matches_in_game = 0
+                for e in game_data.get('rows', []):
+                    winner = str(e.get('winner', '') or '').strip().upper()
+                    if not winner:
+                        continue
+                    if 'P1' in winner or winner.endswith('1') or 'PLAYER 1' in winner:
+                        p1_matches_in_game += 1
+                    elif 'P2' in winner or winner.endswith('2') or 'PLAYER 2' in winner:
+                        p2_matches_in_game += 1
+
+                total_matches_in_game = p1_matches_in_game + p2_matches_in_game
+                winrate_p1_game = (p1_matches_in_game / total_matches_in_game) if total_matches_in_game else 0.0
+                winrate_p2_game = (p2_matches_in_game / total_matches_in_game) if total_matches_in_game else 0.0
+
                 summary_data = [
                     ("Map", normalize_map_value(game_data["map"]) or "Unknown"),
                     ("Winner", game_data["winner"] or "Unknown"),
+                    ("Matches P1", p1_matches_in_game),
+                    ("Matches P2", p2_matches_in_game),
+                    ("Win rate P1", winrate_p1_game),
+                    ("Win rate P2", winrate_p2_game),
                     ("Duration (seconds)", round(game_data["duration_sum"], 2)),
                     ("Damage Dealt P1", game_data["damage_p1"]),
                     ("Damage Dealt P2", game_data["damage_p2"]),
@@ -358,6 +482,7 @@ class GameMainExportMixin:
             filepath = export_dir / filename
             wb.save(filepath)
             print(f"Game log exported to: {filepath}")
+            # No extra CSV file is created; XLSX now contains `Log Type` and cleaned `Log` columns
 
         except Exception as e:
             print(f"Error exporting game log: {e}")
