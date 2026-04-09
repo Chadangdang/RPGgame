@@ -770,3 +770,130 @@ class KillOneByOneAI(AIFramework):
     def __init__(self, team) -> None:
         super().__init__(team)
 
+    def reset(self) -> None:
+        super().reset()
+        self.enemy_threat_map = np.zeros((GRID_ROWS, GRID_COLS))
+        self.objective_map = np.zeros((GRID_ROWS, GRID_COLS))
+        self.projected_enemy_hp: dict[int, float] = {}
+
+    def _build_enemy_threat_map(self) -> np.ndarray:
+        enemy_threat_map = np.zeros((GRID_ROWS, GRID_COLS))
+        for enemy_unit in self.enemy_team:
+            movement_map = np.array(self.field.getMovement(enemy_unit, False))
+            movement_tiles = np.argwhere(movement_map > 0)
+            action_map = np.zeros((GRID_ROWS, GRID_COLS))
+            for tile in movement_tiles:
+                for action_no in range(len(enemy_unit.template["actions"])):
+                    temp_map = self.field.getActionArea(enemy_unit, action_no, False, (tile[0], tile[1]))
+                    action_map = np.maximum(action_map, temp_map)
+            enemy_threat_map = enemy_threat_map + action_map
+        return enemy_threat_map
+
+    def _build_objective_map(self) -> np.ndarray:
+        objective_map = np.zeros((GRID_ROWS, GRID_COLS))
+        objective_map[np.nonzero(self.terrain == 3)] = 8
+        return propagate_half(objective_map)
+
+    def _remove_occupied_enemy_tiles(self, movement_map: np.ndarray) -> np.ndarray:
+        enemy_pos = [enemy.grid for enemy in self.enemy_team]
+        if not enemy_pos:
+            return movement_map
+        enemy_pos_full = np.zeros((GRID_ROWS, GRID_COLS))
+        for row, col in enemy_pos:
+            enemy_pos_full[row][col] = 1
+        return np.logical_and(movement_map, np.logical_not(enemy_pos_full))
+
+    def calculate(self) -> None:
+        self.enemy_threat_map = self._build_enemy_threat_map()
+        self.objective_map = self._build_objective_map()
+        self.projected_enemy_hp = {
+            enemy.id: float(enemy.template['curHP'])
+            for enemy in self.enemy_team
+        }
+        super().calculate()
+
+    def activate(self, activationNo: int) -> None:
+        chara = self.own_team[activationNo]
+
+        movement_map = np.array(self.field.getMovement(chara, False))
+        movement_map = self._remove_occupied_enemy_tiles(movement_map)
+        movement_tiles = np.argwhere(movement_map > 0)
+
+        if movement_tiles.size == 0:
+            self.passCharaAction(chara)
+            self.turnFinished = self.checkCharaActed()
+            return
+
+        threat_limit = max(1.0, float(chara.template['curHP']) * 0.65)
+        best_candidate = None
+        best_score = -10**18
+
+        for tile in movement_tiles:
+            row, col = int(tile[0]), int(tile[1])
+            tile_threat = float(self.enemy_threat_map[row][col])
+            threat_over = max(0.0, tile_threat - threat_limit)
+            objective_bonus = float(self.objective_map[row][col]) * 6.0
+            base_threat_penalty = tile_threat * 10.0
+            strict_threat_penalty = threat_over * 40.0 + (600.0 if threat_over > 0 else 0.0)
+
+            for action_no in range(len(chara.template["actions"])):
+                temp_map = self.field.getActionArea(chara, action_no, False, (row, col))
+                for enemy_unit in self.enemy_team:
+                    erow, ecol = enemy_unit.grid
+                    damage = float(temp_map[erow][ecol])
+                    if damage <= 0:
+                        continue
+
+                    predicted_hp = float(self.projected_enemy_hp.get(enemy_unit.id, enemy_unit.template['curHP']))
+                    kill_bonus = 5000.0 if damage >= predicted_hp else 0.0
+                    focus_bonus = (300.0 / (predicted_hp + 1.0)) + ((enemy_unit.template['maxHP'] - predicted_hp) * 8.0)
+                    damage_score = damage * 12.0
+                    overkill_penalty = max(0.0, damage - predicted_hp) * 5.0
+
+                    score = (
+                        kill_bonus
+                        + focus_bonus
+                        + damage_score
+                        + objective_bonus
+                        - base_threat_penalty
+                        - strict_threat_penalty
+                        - overkill_penalty
+                    )
+
+                    if score > best_score:
+                        best_score = score
+                        best_candidate = (row, col, action_no, enemy_unit.id, damage)
+
+        if best_candidate is not None:
+            row, col, action_no, target_id, planned_damage = best_candidate
+            self.moveCharaTo(chara, (row, col))
+            target = Character.getCharacterByID(int(target_id))
+            if target is not None and not chara.acted:
+                if self.terrain[target.grid[0]][target.grid[1]] == 1:
+                    modifier = -2
+                elif self.terrain[target.grid[0]][target.grid[1]] == 3:
+                    modifier = 2
+                else:
+                    modifier = 0
+                self.useCharaAction(chara, target, int(action_no), modifier)
+                if target.id in self.projected_enemy_hp:
+                    self.projected_enemy_hp[target.id] = max(0.0, self.projected_enemy_hp[target.id] - float(planned_damage))
+            else:
+                self.passCharaAction(chara)
+        else:
+            # No legal attacks: reposition to safest objective-forward tile, then pass.
+            best_tile = None
+            best_tile_score = -10**18
+            for tile in movement_tiles:
+                row, col = int(tile[0]), int(tile[1])
+                tile_threat = float(self.enemy_threat_map[row][col])
+                tile_objective = float(self.objective_map[row][col])
+                tile_score = (tile_objective * 8.0) - (tile_threat * 12.0)
+                if tile_score > best_tile_score:
+                    best_tile_score = tile_score
+                    best_tile = (row, col)
+            if best_tile is not None:
+                self.moveCharaTo(chara, best_tile)
+            self.passCharaAction(chara)
+
+        self.turnFinished = self.checkCharaActed()
