@@ -78,6 +78,8 @@ class GameMainUpdateMixin:
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
                         self.game_screen = 0  # Go to AI selection screen
+                    elif event.key == pygame.K_t:
+                        self._toggle_resolution()
                                 # --- ESC quits only on start menu ---
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
@@ -123,8 +125,8 @@ class GameMainUpdateMixin:
                         continue
 
                 if getattr(self, '_instr_popup_open', False):
-                    # Handle instructions popup events (close on ESC, close button or click-outside)
-                    if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    # Handle instructions popup events (close on X key, close button or click-outside)
+                    if event.type == pygame.KEYDOWN and event.key == pygame.K_x:
                         self._instr_popup_open = False
                         continue
                     if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -164,7 +166,7 @@ class GameMainUpdateMixin:
                 if self._settings_popup_open:
                     # Keyboard handling while popup open
                     if event.type == pygame.KEYDOWN:
-                        if event.key == pygame.K_ESCAPE:
+                        if event.key == pygame.K_x:
                             self._settings_popup_open = False
                             self._settings_popup_page = 'main'
                             continue
@@ -270,28 +272,96 @@ class GameMainUpdateMixin:
                         sys.exit()
             
 
-                    # Arrow keys move the hover menu cursor
+                    # Arrow keys: navigate model list + button focus
                     elif event.key in (pygame.K_UP, pygame.K_DOWN, pygame.K_LEFT, pygame.K_RIGHT):
-                        self.menu_cursor.moveBy(event.key)
-                        # auto-scroll keyboard focus into view (per player column)
-                        row, col = self.menu_cursor.grid
-                        col_idx = 0 if col == 0 else 1
-                        if row < self._model_scroll_offset[col_idx]:
-                            self._model_scroll_offset[col_idx] = row
-                        elif row >= self._model_scroll_offset[col_idx] + self._model_visible_rows:
-                            self._model_scroll_offset[col_idx] = row - self._model_visible_rows + 1
-                        self._model_scroll_offset[col_idx] = max(0, min(self._model_scroll_offset[col_idx], self._model_max_offset()))
+                        max_row = len(AI_SELECTION_LABELS) - 1
+                        focus = getattr(self, '_kb_focus', 'model_list')
 
-                    # Z to confirm selection into the column you're on
+                        if focus == 'model_list':
+                            old_row = self.menu_cursor.grid[0]
+                            if event.key == pygame.K_UP and old_row == 0:
+                                # At top of model list -> go to Settings
+                                self._kb_focus = 'settings'
+                            elif event.key == pygame.K_DOWN and old_row == max_row:
+                                # At bottom of model list -> go to Start
+                                self._kb_focus = 'start'
+                            else:
+                                self.menu_cursor.moveBy(event.key)
+                                # auto-scroll keyboard focus into view (per player column)
+                                row, col = self.menu_cursor.grid
+                                col_idx = 0 if col == 0 else 1
+                                if row < self._model_scroll_offset[col_idx]:
+                                    self._model_scroll_offset[col_idx] = row
+                                elif row >= self._model_scroll_offset[col_idx] + self._model_visible_rows:
+                                    self._model_scroll_offset[col_idx] = row - self._model_visible_rows + 1
+                                self._model_scroll_offset[col_idx] = max(0, min(self._model_scroll_offset[col_idx], self._model_max_offset()))
+
+                        elif focus == 'settings':
+                            if event.key == pygame.K_DOWN:
+                                self._kb_focus = 'model_list'
+                                self.menu_cursor.moveTo((0, self.menu_cursor.grid[1]))
+                                col_idx = 0 if self.menu_cursor.grid[1] == 0 else 1
+                                self._model_scroll_offset[col_idx] = 0
+
+                        elif focus == 'start':
+                            if event.key == pygame.K_UP:
+                                self._kb_focus = 'model_list'
+                                self.menu_cursor.moveTo((max_row, self.menu_cursor.grid[1]))
+                                col_idx = 0 if self.menu_cursor.grid[1] == 0 else 1
+                                self._model_scroll_offset[col_idx] = max(0, self._model_max_offset())
+                            elif event.key == pygame.K_DOWN:
+                                self._kb_focus = 'import_ai'
+
+                        elif focus == 'import_ai':
+                            if event.key == pygame.K_UP:
+                                self._kb_focus = 'start'
+                            elif event.key == pygame.K_RIGHT:
+                                self._kb_focus = 'info'
+
+                        elif focus == 'info':
+                            if event.key == pygame.K_UP:
+                                self._kb_focus = 'start'
+                            elif event.key == pygame.K_LEFT:
+                                self._kb_focus = 'import_ai'
+                            elif event.key == pygame.K_RIGHT:
+                                self._kb_focus = 'map_selection'
+
+                        elif focus == 'map_selection':
+                            if event.key == pygame.K_UP:
+                                self._kb_focus = 'start'
+                            elif event.key == pygame.K_LEFT:
+                                self._kb_focus = 'info'
+
+                    # Z to confirm selection or activate focused button
                     elif event.key == pygame.K_z:
-                        # menu_cursor.grid == (row_index, col_index) where col 0 = P1, col 1 = P2
-                        row, col = self.menu_cursor.grid
-                        if col == 0:
-                            self.p1_sel_cursor.moveTo((row, 0))
-                            self.p1_sel_cursor.show = True
-                        elif col == 1:
-                            self.p2_sel_cursor.moveTo((row, 1))
-                            self.p2_sel_cursor.show = True
+                        focus = getattr(self, '_kb_focus', 'model_list')
+                        if focus == 'model_list':
+                            # menu_cursor.grid == (row_index, col_index) where col 0 = P1, col 1 = P2
+                            row, col = self.menu_cursor.grid
+                            if col == 0:
+                                self.p1_sel_cursor.moveTo((row, 0))
+                                self.p1_sel_cursor.show = True
+                            elif col == 1:
+                                self.p2_sel_cursor.moveTo((row, 1))
+                                self.p2_sel_cursor.show = True
+                        elif focus == 'settings':
+                            self._settings_popup_open = not self._settings_popup_open
+                            self._settings_popup_page = 'main'
+                        elif focus == 'start':
+                            if self.p1_sel_cursor.show and self.p2_sel_cursor.show:
+                                self.screen1init()
+                        elif focus == 'import_ai':
+                            try:
+                                self._open_exports_folder()
+                            except Exception:
+                                print('Import AI action failed')
+                        elif focus == 'info':
+                            self._instr_popup_open = True
+                        elif focus == 'map_selection':
+                            self._map_popup_open = True
+                            self._map_popup_temp_selection = self._clamp_map_index(self.map_number)
+                            self._map_popup_hover_index = None
+                            self._map_popup_select_hovered = False
 
                     # A toggles auto mode
                     elif event.key == pygame.K_a:
@@ -302,6 +372,10 @@ class GameMainUpdateMixin:
                         self.map_number += 1
                         if self.map_number > len(self.map_list):
                             self.map_number = 0
+
+                    # T toggles screen resolution
+                    elif event.key == pygame.K_t:
+                        self._toggle_resolution()
 
                 mouse_pos = pygame.mouse.get_pos()
 
@@ -385,6 +459,7 @@ class GameMainUpdateMixin:
                                         self.p2_sel_cursor.moveTo((real_idx, 1))
                                         self.p2_sel_cursor.show = True
                                         self.menu_cursor.moveTo((real_idx, 1))
+                                    self._kb_focus = 'model_list'
                                     return True
                             return False
 
@@ -569,6 +644,8 @@ class GameMainUpdateMixin:
                             Cursor.state = 0
                             self.field.select_cursor.show = False
                             self.field.hover_cursor.show = True
+                    elif event.key == pygame.K_t:
+                        self._toggle_resolution()
                     continue
 
                 if event.type == pygame.MOUSEBUTTONDOWN:

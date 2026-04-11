@@ -289,7 +289,7 @@ class GameMainRenderMixin:
                         pygame.draw.rect(self.screen, highlight_color, rect, 6)
 
                     # Keyboard focus glow
-                    if self.menu_cursor.grid == (idx, 0 if is_left else 1):
+                    if getattr(self, '_kb_focus', 'model_list') == 'model_list' and self.menu_cursor.grid == (idx, 0 if is_left else 1):
                         glow = pygame.Surface((rect.width + 8, rect.height + 8), pygame.SRCALPHA)
                         glow.fill((255, 255, 94, 80))
                         self.screen.blit(glow, (rect.x - 4, rect.y - 4))
@@ -317,6 +317,11 @@ class GameMainRenderMixin:
             pygame.draw.rect(self.screen, BLACK, self._start_button_rect, 2)
             start_text = self.font_sm.render('START', False, (0, 0, 0))
             self.screen.blit(start_text, start_text.get_rect(center=self._start_button_rect.center))
+            if getattr(self, '_kb_focus', 'model_list') == 'start':
+                glow = pygame.Surface((self._start_button_rect.width + 8, self._start_button_rect.height + 8), pygame.SRCALPHA)
+                glow.fill((255, 255, 94, 80))
+                self.screen.blit(glow, (self._start_button_rect.x - 4, self._start_button_rect.y - 4))
+                pygame.draw.rect(self.screen, (255, 255, 94), self._start_button_rect, 3)
 
             # (Auto, Game/Match limits now rendered inside Settings popup)
 
@@ -332,6 +337,11 @@ class GameMainRenderMixin:
             pygame.draw.rect(self.screen, (0, 0, 0), self._map_select_button_rect, 1)
             map_button_text = self.font_s.render("Map Selection", False, (0, 0, 0))
             self.screen.blit(map_button_text, map_button_text.get_rect(center=self._map_select_button_rect.center))
+            if getattr(self, '_kb_focus', 'model_list') == 'map_selection':
+                glow = pygame.Surface((self._map_select_button_rect.width + 8, self._map_select_button_rect.height + 8), pygame.SRCALPHA)
+                glow.fill((255, 255, 94, 80))
+                self.screen.blit(glow, (self._map_select_button_rect.x - 4, self._map_select_button_rect.y - 4))
+                pygame.draw.rect(self.screen, (255, 255, 94), self._map_select_button_rect, 3)
             # Import AI button (bottom-left)
             try:
                 import_hover = self._import_ai_button_rect.collidepoint(mouse_pos)
@@ -343,6 +353,11 @@ class GameMainRenderMixin:
             pygame.draw.rect(self.screen, (0, 0, 0), self._import_ai_button_rect, 1)
             import_text = self.font_s.render("Import AI", False, (0, 0, 0))
             self.screen.blit(import_text, import_text.get_rect(center=self._import_ai_button_rect.center))
+            if getattr(self, '_kb_focus', 'model_list') == 'import_ai':
+                glow = pygame.Surface((self._import_ai_button_rect.width + 8, self._import_ai_button_rect.height + 8), pygame.SRCALPHA)
+                glow.fill((255, 255, 94, 80))
+                self.screen.blit(glow, (self._import_ai_button_rect.x - 4, self._import_ai_button_rect.y - 4))
+                pygame.draw.rect(self.screen, (255, 255, 94), self._import_ai_button_rect, 3)
 
             # Instructions circular button (to the right of Import AI)
             try:
@@ -357,6 +372,12 @@ class GameMainRenderMixin:
             pygame.draw.circle(self.screen, (0, 0, 0), instr_center, instr_radius, 2)
             i_text = self.font_sm.render('i', False, (0, 0, 0))
             self.screen.blit(i_text, i_text.get_rect(center=instr_center))
+            if getattr(self, '_kb_focus', 'model_list') == 'info':
+                glow_surface = pygame.Surface((self._instr_button_rect.width + 8, self._instr_button_rect.height + 8), pygame.SRCALPHA)
+                glow_center = (glow_surface.get_width() // 2, glow_surface.get_height() // 2)
+                pygame.draw.circle(glow_surface, (255, 255, 94, 80), glow_center, instr_radius + 4)
+                self.screen.blit(glow_surface, (self._instr_button_rect.x - 4, self._instr_button_rect.y - 4))
+                pygame.draw.circle(self.screen, (255, 255, 94), instr_center, instr_radius, 3)
             # Settings button (top-right)
             self._settings_button_hovered = self._settings_button_rect.collidepoint(mouse_pos)
             settings_fill = (245, 245, 245) if not self._settings_button_hovered else (230, 230, 230)
@@ -364,6 +385,11 @@ class GameMainRenderMixin:
             pygame.draw.rect(self.screen, (0, 0, 0), self._settings_button_rect, 2)
             setting_text = self.font_s.render('Setting', False, (0, 0, 0))
             self.screen.blit(setting_text, setting_text.get_rect(center=self._settings_button_rect.center))
+            if getattr(self, '_kb_focus', 'model_list') == 'settings':
+                glow = pygame.Surface((self._settings_button_rect.width + 8, self._settings_button_rect.height + 8), pygame.SRCALPHA)
+                glow.fill((255, 255, 94, 80))
+                self.screen.blit(glow, (self._settings_button_rect.x - 4, self._settings_button_rect.y - 4))
+                pygame.draw.rect(self.screen, (255, 255, 94), self._settings_button_rect, 3)
 
             if self._settings_popup_open:
                 overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
@@ -697,13 +723,13 @@ class GameMainRenderMixin:
 
                     # (rendered instruction lines above)
 
-                # Draw the map 'SELECT' box only when the map popup is active
-                if getattr(self, '_map_popup_open', False) and not getattr(self, '_instr_popup_open', False):
-                    select_color = (199, 255, 178) if not self._map_popup_select_hovered else (182, 235, 160)
-                    pygame.draw.rect(self.screen, select_color, self._map_popup_select_rect)
-                    pygame.draw.rect(self.screen, (0, 0, 0), self._map_popup_select_rect, 2)
-                    select_text = self.font_sm.render("SELECT", False, (0, 0, 0))
-                    self.screen.blit(select_text, select_text.get_rect(center=self._map_popup_select_rect.center))
+            # Draw the map 'SELECT' box only when the map popup is active
+            if getattr(self, '_map_popup_open', False) and not getattr(self, '_instr_popup_open', False):
+                select_color = (199, 255, 178) if not self._map_popup_select_hovered else (182, 235, 160)
+                pygame.draw.rect(self.screen, select_color, self._map_popup_select_rect)
+                pygame.draw.rect(self.screen, (0, 0, 0), self._map_popup_select_rect, 2)
+                select_text = self.font_sm.render("SELECT", False, (0, 0, 0))
+                self.screen.blit(select_text, select_text.get_rect(center=self._map_popup_select_rect.center))
 
         elif self.game_screen == 1:
             self.screen.fill(SMOKE)

@@ -127,6 +127,9 @@ class GameMainInitMixin:
         self._model_btn_p2 = pygame.Rect(630, 590, 260, 40)
         self._start_button_rect = pygame.Rect(WIDTH // 2 - 130, 740, 260, 64)
 
+        # Keyboard navigation focus: 'model_list' | 'settings' | 'start' | 'map_selection'
+        self._kb_focus = 'model_list'
+
         # Settings popup (inside AI selection screen)
         self._settings_button_rect = pygame.Rect(WIDTH - 190, 22, 150, 52)
         self._settings_button_hovered = False
@@ -265,8 +268,8 @@ class GameMainInitMixin:
             'Controls:',
             ' - Z / Left Click : Select',
             ' - X / Right Click : Cancel',
-            ' - A : Toggle Auto setting during matches',
             ' - Enter : Start the game / confirm selection',
+            ' - T : Toggle resolution',
             '',
             'Gameplay:',
             ' - Select units, move and use actions to defeat the enemy.',
@@ -299,7 +302,7 @@ class GameMainInitMixin:
             459,
         )
 
-        select_offset_x, select_offset_y = 681, 597
+        select_offset_x, select_offset_y = 420, 660
         self._map_popup_select_rect = pygame.Rect(
             self._map_popup_rect.x + select_offset_x,
             self._map_popup_rect.y + select_offset_y,
@@ -600,7 +603,7 @@ class GameMainInitMixin:
 
     def _handle_map_popup_event(self, event: pygame.event.Event) -> bool:
         if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_ESCAPE:
+            if event.key == pygame.K_x:
                 self._map_popup_open = False
                 self._map_popup_select_hovered = False
                 self._map_popup_temp_selection = self._clamp_map_index(self.map_number)
@@ -614,6 +617,9 @@ class GameMainInitMixin:
                 return True
             if event.key in (pygame.K_UP, pygame.K_DOWN, pygame.K_LEFT, pygame.K_RIGHT):
                 self._move_map_popup_selection(event.key)
+                return True
+            if event.key == pygame.K_t:
+                self._toggle_resolution()
                 return True
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self._map_popup_select_rect.collidepoint(event.pos):
