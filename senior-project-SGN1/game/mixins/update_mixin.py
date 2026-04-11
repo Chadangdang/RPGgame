@@ -363,10 +363,6 @@ class GameMainUpdateMixin:
                             self._map_popup_hover_index = None
                             self._map_popup_select_hovered = False
 
-                    # A toggles auto mode
-                    elif event.key == pygame.K_a:
-                        self.isAuto = not self.isAuto
-
                     # M cycles map index
                     elif event.key == pygame.K_m:
                         self.map_number += 1
@@ -644,6 +640,10 @@ class GameMainUpdateMixin:
                             Cursor.state = 0
                             self.field.select_cursor.show = False
                             self.field.hover_cursor.show = True
+                            self.field.clearMovement()
+                            for chara in self.GameMaster.activeAI.own_team:
+                                chara.acted = True
+                                chara.moved = True
                     elif event.key == pygame.K_t:
                         self._toggle_resolution()
                     continue

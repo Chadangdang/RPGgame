@@ -266,15 +266,19 @@ class GameMainInitMixin:
             'Game Instructions.',
             '',
             'Controls:',
+            ' - Arrow Keys : Navigate the game.',
             ' - Z / Left Click : Select',
             ' - X / Right Click : Cancel',
-            ' - Enter : Start the game / confirm selection',
+            ' - M : Change the map',
             ' - T : Toggle resolution',
+            ' - Enter : Start the game',
+            ' - Esc : Exit the game or pause during a match',
             '',
             'Gameplay:',
+            ' - Select player types, game mode, iteration, and map to start.',
+            ' - Use the setting to change game mode and number of games and matches.',
             ' - Select units, move and use actions to defeat the enemy.',
-            ' - Win rounds to capture objectives and win matches.',
-            ' - Use the Balance Tweaking settings to change AI behaviour.',
+            ' - Capture the objective area to win the match.',          
         ]
         # AI description page (brief descriptions for available AI types)
         self._instr_ai_lines = [
