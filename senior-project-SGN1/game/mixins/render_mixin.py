@@ -635,7 +635,7 @@ class GameMainRenderMixin:
                     self.screen.blit(surf, surf.get_rect(center=rect.center))
 
                 render_tab_text('Game Instruction', game_tab_rect)
-                render_tab_text('Import Instruction', import_tab_rect)
+                render_tab_text('AI Insertion', import_tab_rect)
                 render_tab_text('AI Description', ai_tab_rect)
 
                 # Render selected page lines with simple wrapping
