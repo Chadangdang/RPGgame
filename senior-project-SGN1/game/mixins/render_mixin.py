@@ -659,17 +659,20 @@ class GameMainRenderMixin:
                     if raw_text.strip() == '':
                         wrapped_lines.append('')
                         continue
-                    words = raw_text.split(' ')
-                    cur = ''
+                    # Preserve leading whitespace (indentation)
+                    stripped = raw_text.lstrip(' ')
+                    indent = raw_text[:len(raw_text) - len(stripped)]
+                    words = stripped.split(' ')
+                    cur = indent
                     for w in words:
-                        test = (cur + ' ' + w).strip()
+                        test = cur + (' ' if cur.strip() else '') + w
                         if chosen_font.size(test)[0] <= max_w:
                             cur = test
                         else:
-                            if cur:
+                            if cur.strip():
                                 wrapped_lines.append(cur)
-                            cur = w
-                    if cur:
+                            cur = indent + w
+                    if cur.strip():
                         wrapped_lines.append(cur)
 
                 total_h = len(wrapped_lines) * line_h
