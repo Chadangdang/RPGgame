@@ -88,7 +88,7 @@ class GameMainFlowUiMixin:
         game_input, match_input = self._sync_limit_values_from_inputs()
         if game_input is None or match_input is None or self.game_limit < 1 or self.match_limit < 1:
             self._set_start_alert(
-                "Game Limit, Match limit have to be number and >=1 user have to edit it first"
+                "Game & Match Limits must be numbers starting from 1"
             )
             return False
         self._start_alert_message = ''
