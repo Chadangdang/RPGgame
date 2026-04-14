@@ -264,8 +264,7 @@ class GameMainInitMixin:
         self._instr_import_lines = [ln.rstrip() for ln in AI_INSERTION_INSTRUCTION.strip('\n').splitlines()]
         # Basic game instructions (kept here so popup has two pages)
         self._instr_game_lines = [
-            '',
-            'Game Instructions.',
+            'GAME INSTRUCTIONS',
             '',
             'Controls:',
             ' - Arrow Keys : Navigate the game.',
@@ -284,8 +283,7 @@ class GameMainInitMixin:
         ]
         # AI description page (brief descriptions for available AI types)
         self._instr_ai_lines = [
-            '',
-            'AI description',
+            'AI DESCRIPTION',
             '',
             'Player Input: Human control via mouse/keyboard.',
             'Baseline AI: Default heuristic AI used for testing.',
