@@ -15,6 +15,7 @@ from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from datetime import datetime
 import os
 from types import SimpleNamespace
+from insert.Ai_insertion_instruction import AI_INSERTION_INSTRUCTION
 
 from game.balance import balance_controller
 
@@ -222,6 +223,7 @@ class GameMainInitMixin:
         self.font_end_title = pygame.font.Font('resource/font.ttf', 74)
         self.font_end_button = pygame.font.Font('resource/font.ttf', 24)
         self.font_menu_label = pygame.font.Font('resource/font.ttf', 26)
+        self._instr_text_font = pygame.font.Font('resource/font.ttf', 20)
 
         # --- Map selection UI geometry/state ---
         self._map_select_button_rect = pygame.Rect(995, 903, 220, 48)
@@ -256,10 +258,10 @@ class GameMainInitMixin:
                 '3. Click "Select" to apply the chosen AI model.',
             ]
 
-        # Instruction popup supports two pages: 'game' and 'import'
+        # Instruction popup supports three pages: 'game', 'import', and 'ai'
         self._instr_page = 'game'  # 'game' | 'import'
-        # Import instructions default to README content/fallback
-        self._instr_import_lines = list(getattr(self, '_instr_lines', []))
+        # Import instructions come from a dedicated insertion guide.
+        self._instr_import_lines = [ln.rstrip() for ln in AI_INSERTION_INSTRUCTION.strip('\n').splitlines()]
         # Basic game instructions (kept here so popup has two pages)
         self._instr_game_lines = [
             '',
@@ -292,6 +294,8 @@ class GameMainInitMixin:
             'Aggressive/Strategic/Survival: Behaviour variants built from personality cores.',
             'Disable AI: Turns off AI control for a slot.',
         ]
+        self._instr_scroll_by_page = {'game': 0, 'import': 0, 'ai': 0}
+        self._instr_scroll_step = 28
 
         popup_width, popup_height = 1063, 907
         popup_x = (WIDTH - popup_width) // 2

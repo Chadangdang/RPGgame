@@ -129,6 +129,27 @@ class GameMainUpdateMixin:
                     if event.type == pygame.KEYDOWN and event.key == pygame.K_x:
                         self._instr_popup_open = False
                         continue
+                    if event.type == pygame.KEYDOWN and event.key in (pygame.K_UP, pygame.K_DOWN, pygame.K_PAGEUP, pygame.K_PAGEDOWN):
+                        page = getattr(self, '_instr_page', 'game')
+                        if not hasattr(self, '_instr_scroll_by_page'):
+                            self._instr_scroll_by_page = {'game': 0, 'import': 0, 'ai': 0}
+                        step = getattr(self, '_instr_scroll_step', 28)
+                        if event.key == pygame.K_UP:
+                            self._instr_scroll_by_page[page] = max(0, self._instr_scroll_by_page.get(page, 0) - step)
+                        elif event.key == pygame.K_DOWN:
+                            self._instr_scroll_by_page[page] = self._instr_scroll_by_page.get(page, 0) + step
+                        elif event.key == pygame.K_PAGEUP:
+                            self._instr_scroll_by_page[page] = max(0, self._instr_scroll_by_page.get(page, 0) - step * 8)
+                        elif event.key == pygame.K_PAGEDOWN:
+                            self._instr_scroll_by_page[page] = self._instr_scroll_by_page.get(page, 0) + step * 8
+                        continue
+                    if event.type == pygame.MOUSEWHEEL:
+                        page = getattr(self, '_instr_page', 'game')
+                        if not hasattr(self, '_instr_scroll_by_page'):
+                            self._instr_scroll_by_page = {'game': 0, 'import': 0, 'ai': 0}
+                        step = getattr(self, '_instr_scroll_step', 28)
+                        self._instr_scroll_by_page[page] = max(0, self._instr_scroll_by_page.get(page, 0) - (event.y * step))
+                        continue
                     if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                         # click close button
                         if hasattr(self, '_instr_popup_close_rect') and self._instr_popup_close_rect.collidepoint(event.pos):

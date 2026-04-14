@@ -638,12 +638,11 @@ class GameMainRenderMixin:
                 render_tab_text('AI Insertion', import_tab_rect)
                 render_tab_text('AI Description', ai_tab_rect)
 
-                # Render selected page lines with simple wrapping
+                # Render selected page lines with simple wrapping + vertical scrolling.
                 padding = 28
                 text_x = self._instr_popup_rect.x + padding
                 text_y = self._instr_popup_rect.y + 140
                 max_w = self._instr_popup_rect.width - padding * 2
-                # choose a font size that fits the available area (try from 14 down to 10)
                 available_h = self._instr_popup_rect.bottom - padding - text_y
                 if getattr(self, '_instr_page', 'game') == 'game':
                     source_lines = getattr(self, '_instr_game_lines', [])
@@ -651,77 +650,62 @@ class GameMainRenderMixin:
                     source_lines = getattr(self, '_instr_import_lines', [])
                 else:
                     source_lines = getattr(self, '_instr_ai_lines', [])
-                chosen_font = self.font_ss
-                chosen_size = self.font_ss.get_linesize()
-                for size in (20, 18, 16, 14, 13, 12, 11, 10):
-                    tmp_font = pygame.font.Font('resource/font.ttf', size)
-                    tmp_line_h = tmp_font.get_height() + 6
-                    # estimate required height for wrapped text
-                    y_est = 0
-                    fits = True
-                    for raw_line in source_lines:
-                        if str(raw_line).strip() == '':
-                            y_est += tmp_line_h
-                            if y_est > available_h:
-                                fits = False
-                            continue
-                        words = raw_line.split(' ')
-                        cur = ''
-                        for w in words:
-                            test = (cur + ' ' + w).strip()
-                            if tmp_font.size(test)[0] <= max_w:
-                                cur = test
-                            else:
-                                y_est += tmp_line_h
-                                cur = w
-                                if y_est + tmp_line_h > available_h:
-                                    fits = False
-                                    break
-                        if not fits:
-                            break
-                        if cur:
-                            y_est += tmp_line_h
-                            if y_est > available_h:
-                                fits = False
-                                break
-                    if fits:
-                        chosen_font = tmp_font
-                        line_h = tmp_line_h
-                        break
-                else:
-                    # fallback to smallest tried size
-                    chosen_font = pygame.font.Font('resource/font.ttf', 10)
-                    line_h = chosen_font.get_height() + 6
+                chosen_font = getattr(self, '_instr_text_font', self.font_ss)
+                line_h = chosen_font.get_height() + 6
 
-                y = text_y
+                wrapped_lines = []
                 for raw_line in source_lines:
-                    if str(raw_line).strip() == '':
-                        y += line_h
-                        if y > self._instr_popup_rect.bottom - padding:
-                            break
+                    raw_text = str(raw_line)
+                    if raw_text.strip() == '':
+                        wrapped_lines.append('')
                         continue
-                    # simple word-wrap using chosen_font
-                    words = raw_line.split(' ')
+                    words = raw_text.split(' ')
                     cur = ''
                     for w in words:
                         test = (cur + ' ' + w).strip()
                         if chosen_font.size(test)[0] <= max_w:
                             cur = test
                         else:
-                            if y + line_h > self._instr_popup_rect.bottom - padding:
-                                break
-                            surf = chosen_font.render(cur, False, (10, 10, 10))
-                            self.screen.blit(surf, (text_x, y))
-                            y += line_h
+                            if cur:
+                                wrapped_lines.append(cur)
                             cur = w
                     if cur:
-                        if y + line_h > self._instr_popup_rect.bottom - padding:
-                            break
-                        surf = chosen_font.render(cur, False, (10, 10, 10))
-                        self.screen.blit(surf, (text_x, y))
-                        y += line_h
+                        wrapped_lines.append(cur)
 
-                    # (rendered instruction lines above)
+                total_h = len(wrapped_lines) * line_h
+                max_scroll = max(0, total_h - available_h)
+                page = getattr(self, '_instr_page', 'game')
+                if not hasattr(self, '_instr_scroll_by_page'):
+                    self._instr_scroll_by_page = {'game': 0, 'import': 0, 'ai': 0}
+                current_scroll = max(0, min(self._instr_scroll_by_page.get(page, 0), max_scroll))
+                self._instr_scroll_by_page[page] = current_scroll
+
+                clip_rect = pygame.Rect(text_x, text_y, max_w, available_h)
+                prev_clip = self.screen.get_clip()
+                self.screen.set_clip(clip_rect)
+
+                y = text_y - current_scroll
+                for line in wrapped_lines:
+                    if y + line_h < text_y:
+                        y += line_h
+                        continue
+                    if y > text_y + available_h:
+                        break
+                    if line:
+                        surf = chosen_font.render(line, False, (10, 10, 10))
+                        self.screen.blit(surf, (text_x, y))
+                    y += line_h
+
+                self.screen.set_clip(prev_clip)
+
+                if max_scroll > 0:
+                    bar_w = 8
+                    bar_x = self._instr_popup_rect.right - padding + 4
+                    bar_rect = pygame.Rect(bar_x, text_y, bar_w, available_h)
+                    pygame.draw.rect(self.screen, (220, 220, 220), bar_rect)
+                    thumb_h = max(36, int(available_h * (available_h / total_h)))
+                    thumb_y = text_y + int((available_h - thumb_h) * (current_scroll / max_scroll))
+                    pygame.draw.rect(self.screen, (120, 120, 120), pygame.Rect(bar_x, thumb_y, bar_w, thumb_h))
 
             # Draw the map 'SELECT' box only when the map popup is active
             if getattr(self, '_map_popup_open', False) and not getattr(self, '_instr_popup_open', False):
