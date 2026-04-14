@@ -324,10 +324,9 @@ class GameMainInitMixin:
         self._map_option_labels = [self._map_label_from_key(name) for name in self.map_list] + ['Random']
         self._map_preview_large, self._map_preview_small = self._load_map_previews()
 
-        # Match & Game limit slider geometry/state (moved into Settings popup)
-        self.match_limit = AUTO_MATCH_LIMIT  # default slider value (1..10)
+        # Match & Game limit numeric input geometry/state (inside Settings popup)
+        self.match_limit = AUTO_MATCH_LIMIT
         self._match_limit_min = 1
-        self._match_limit_max = 10
         # position these relative to the settings popup so they render inside it
         base_x = self._settings_popup_rect.x + 140
         # place controls below the Toggle Resolution button for clearer grouping
@@ -336,35 +335,22 @@ class GameMainInitMixin:
         self._settings_label_x = base_x
         value_x = base_x + 260
         self._settings_value_x = value_x
-        # compute slider width so it ends at the same right edge as the main buttons
-        btn_width = self._settings_popup_rect.width - 280
-        btn_right = base_x + btn_width
-        gap_to_slider = 68
-        slider_w = max(40, btn_right - (value_x + gap_to_slider))
 
         # Game limit (above match limit) — Auto row removed so controls start at base_y
         self.game_limit = AUTO_GAME_LIMIT
         self._game_limit_min = 1
-        self._game_limit_max = 10
-        # place game limit at the top of the control group
-        self._game_limit_box_rect = pygame.Rect(value_x, base_y, 58, 25)
-        self._game_limit_knob_width = 16
-        self._game_limit_knob_height = 16
-        game_slider_y = self._game_limit_box_rect.centery - self._game_limit_knob_height // 2
-        self._game_limit_slider_rect = pygame.Rect(value_x + gap_to_slider, game_slider_y, slider_w, self._game_limit_knob_height)
-        self._game_limit_slider_dragging = False
+        # number box inputs
+        self._game_limit_box_rect = pygame.Rect(value_x, base_y, 170, 44)
+        self._game_limit_input = str(self.game_limit)
 
         # Match limit (below game limit)
         self.match_limit = AUTO_MATCH_LIMIT
         self._match_limit_min = 1
-        self._match_limit_max = 10
-        # place match limit below the game limit with same spacing
-        self._match_limit_box_rect = pygame.Rect(value_x, base_y + 72, 58, 25)
-        self._match_limit_knob_width = 16
-        self._match_limit_knob_height = 16
-        match_slider_y = self._match_limit_box_rect.centery - self._match_limit_knob_height // 2
-        self._match_limit_slider_rect = pygame.Rect(value_x + gap_to_slider, match_slider_y, slider_w, self._match_limit_knob_height)
-        self._match_limit_slider_dragging = False
+        self._match_limit_box_rect = pygame.Rect(value_x, base_y + 78, 170, 44)
+        self._match_limit_input = str(self.match_limit)
+        self._active_limit_input: str | None = None
+        self._start_alert_message = ''
+        self._start_alert_until = 0
 
         # --- Endgame popup geometry ---
         self.endgame_popup_rect = pygame.Rect(243, 151, 794, 420)

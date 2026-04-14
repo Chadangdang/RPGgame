@@ -59,40 +59,6 @@ SB_THUMB_HOVER = (145, 135, 120)
 SB_THUMB_DRAG  = (130, 120, 105)
 
 class GameMainRenderMixin:
-    def _match_limit_position_from_value(self, value: int) -> int:
-        value = max(self._match_limit_min, min(self._match_limit_max, value))
-        span = self._match_limit_slider_rect.width - self._match_limit_knob_width
-        if span <= 0 or self._match_limit_max == self._match_limit_min:
-            return 0
-        ratio = (value - self._match_limit_min) / (self._match_limit_max - self._match_limit_min)
-        return int(round(ratio * span))
-
-    def _match_limit_value_from_pos(self, pos_x: float) -> int:
-        span = self._match_limit_slider_rect.width - self._match_limit_knob_width
-        if span <= 0 or self._match_limit_max == self._match_limit_min:
-            return self._match_limit_min
-        ratio = (pos_x - self._match_limit_slider_rect.x - self._match_limit_knob_width / 2) / span
-        ratio = max(0.0, min(1.0, ratio))
-        value = round(ratio * (self._match_limit_max - self._match_limit_min)) + self._match_limit_min
-        return int(max(self._match_limit_min, min(self._match_limit_max, value)))
-
-    def _game_limit_position_from_value(self, value: int) -> int:
-        value = max(self._game_limit_min, min(self._game_limit_max, value))
-        span = self._game_limit_slider_rect.width - self._game_limit_knob_width
-        if span <= 0 or self._game_limit_max == self._game_limit_min:
-            return 0
-        ratio = (value - self._game_limit_min) / (self._game_limit_max - self._game_limit_min)
-        return int(round(ratio * span))
-
-    def _game_limit_value_from_pos(self, pos_x: float) -> int:
-        span = self._game_limit_slider_rect.width - self._game_limit_knob_width
-        if span <= 0 or self._game_limit_max == self._game_limit_min:
-            return self._game_limit_min
-        ratio = (pos_x - self._game_limit_slider_rect.x - self._game_limit_knob_width / 2) / span
-        ratio = max(0.0, min(1.0, ratio))
-        value = round(ratio * (self._game_limit_max - self._game_limit_min)) + self._game_limit_min
-        return int(max(self._game_limit_min, min(self._game_limit_max, value)))
-
     def _model_track_height(self) -> int:
         left_rows = self._model_row_rects(True)
         right_rows = self._model_row_rects(False)
@@ -323,6 +289,15 @@ class GameMainRenderMixin:
                 self.screen.blit(glow, (self._start_button_rect.x - 4, self._start_button_rect.y - 4))
                 pygame.draw.rect(self.screen, (255, 255, 94), self._start_button_rect, 3)
 
+            alert_msg = getattr(self, '_start_alert_message', '')
+            if alert_msg and pygame.time.get_ticks() < getattr(self, '_start_alert_until', 0):
+                alert_bg = pygame.Rect(0, 0, 760, 46)
+                alert_bg.midtop = (WIDTH // 2, 24)
+                pygame.draw.rect(self.screen, (247, 207, 111), alert_bg, border_radius=8)
+                pygame.draw.rect(self.screen, (64, 36, 0), alert_bg, 2, border_radius=8)
+                alert_text = self.font_s.render(alert_msg, False, (30, 18, 0))
+                self.screen.blit(alert_text, alert_text.get_rect(center=alert_bg.center))
+
             # (Auto, Game/Match limits now rendered inside Settings popup)
 
             # Map preview and selection button
@@ -428,39 +403,25 @@ class GameMainRenderMixin:
 
                     # Game limit
                     game_label = self.font_sm.render("Game Limit:", False, (0, 0, 0))
-                    game_label_pos = (label_x, self._game_limit_box_rect.y - 8)
-                    self.screen.blit(game_label, game_label_pos)
-                    pygame.draw.rect(self.screen, (245, 245, 245), self._game_limit_box_rect)
-                    pygame.draw.rect(self.screen, (0, 0, 0), self._game_limit_box_rect, 1)
-                    game_value_surface = self.font_sm.render(str(self.game_limit), False, (0, 0, 0))
-                    game_value_rect = game_value_surface.get_rect(center=self._game_limit_box_rect.center)
+                    game_label_rect = game_label.get_rect(midleft=(label_x, self._game_limit_box_rect.centery))
+                    self.screen.blit(game_label, game_label_rect)
+                    game_active = getattr(self, '_active_limit_input', None) == 'game'
+                    pygame.draw.rect(self.screen, (255, 255, 255), self._game_limit_box_rect, border_radius=6)
+                    pygame.draw.rect(self.screen, (255, 220, 120) if game_active else (0, 0, 0), self._game_limit_box_rect, 2, border_radius=6)
+                    game_value_surface = self.font_sm.render(str(getattr(self, '_game_limit_input', self.game_limit)), False, (0, 0, 0))
+                    game_value_rect = game_value_surface.get_rect(midleft=(self._game_limit_box_rect.x + 12, self._game_limit_box_rect.centery))
                     self.screen.blit(game_value_surface, game_value_rect)
-
-                    # Draw game limit slider track + knob
-                    pygame.draw.rect(self.screen, (235, 235, 235), self._game_limit_slider_rect)
-                    pygame.draw.rect(self.screen, (0, 0, 0), self._game_limit_slider_rect, 1)
-                    knob_x = self._game_limit_slider_rect.x + self._game_limit_position_from_value(self.game_limit)
-                    knob_rect = pygame.Rect(knob_x, self._game_limit_slider_rect.y - (self._game_limit_knob_height - self._game_limit_slider_rect.height) // 2, self._game_limit_knob_width, self._game_limit_knob_height)
-                    pygame.draw.rect(self.screen, (180, 180, 180), knob_rect)
-                    pygame.draw.rect(self.screen, (0, 0, 0), knob_rect, 1)
 
                     # Match limit
                     match_label = self.font_sm.render("Match Limit:", False, (0, 0, 0))
-                    match_label_pos = (label_x, self._match_limit_box_rect.y - 8)
-                    self.screen.blit(match_label, match_label_pos)
-                    pygame.draw.rect(self.screen, (245, 245, 245), self._match_limit_box_rect)
-                    pygame.draw.rect(self.screen, (0, 0, 0), self._match_limit_box_rect, 1)
-                    match_value_surface = self.font_sm.render(str(self.match_limit), False, (0, 0, 0))
-                    value_rect = match_value_surface.get_rect(center=self._match_limit_box_rect.center)
+                    match_label_rect = match_label.get_rect(midleft=(label_x, self._match_limit_box_rect.centery))
+                    self.screen.blit(match_label, match_label_rect)
+                    match_active = getattr(self, '_active_limit_input', None) == 'match'
+                    pygame.draw.rect(self.screen, (255, 255, 255), self._match_limit_box_rect, border_radius=6)
+                    pygame.draw.rect(self.screen, (255, 220, 120) if match_active else (0, 0, 0), self._match_limit_box_rect, 2, border_radius=6)
+                    match_value_surface = self.font_sm.render(str(getattr(self, '_match_limit_input', self.match_limit)), False, (0, 0, 0))
+                    value_rect = match_value_surface.get_rect(midleft=(self._match_limit_box_rect.x + 12, self._match_limit_box_rect.centery))
                     self.screen.blit(match_value_surface, value_rect)
-
-                    # Draw match limit slider track + knob
-                    pygame.draw.rect(self.screen, (235, 235, 235), self._match_limit_slider_rect)
-                    pygame.draw.rect(self.screen, (0, 0, 0), self._match_limit_slider_rect, 1)
-                    mknob_x = self._match_limit_slider_rect.x + self._match_limit_position_from_value(self.match_limit)
-                    mknob_rect = pygame.Rect(mknob_x, self._match_limit_slider_rect.y - (self._match_limit_knob_height - self._match_limit_slider_rect.height) // 2, self._match_limit_knob_width, self._match_limit_knob_height)
-                    pygame.draw.rect(self.screen, (180, 180, 180), mknob_rect)
-                    pygame.draw.rect(self.screen, (0, 0, 0), mknob_rect, 1)
                 else:
                     back_hovered = self._settings_sub_back_rect.collidepoint(mouse_pos)
                     back_fill = (236, 236, 236) if not back_hovered else (223, 223, 223)

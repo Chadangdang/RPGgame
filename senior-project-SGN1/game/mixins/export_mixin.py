@@ -227,13 +227,10 @@ class GameMainExportMixin:
                 game_data["obj_p1"] = max(game_data["obj_p1"], as_int(entry.get("objective_control_p1", 0), 0))
                 game_data["obj_p2"] = max(game_data["obj_p2"], as_int(entry.get("objective_control_p2", 0), 0))
 
-            # Respect configured game limit: export only games up to the configured limit
-            configured_limit = int(getattr(self, 'game_limit', 0) or 0)
             all_game_keys = sorted(games_data.keys())
-            if configured_limit > 0:
-                export_game_keys = [k for k in all_game_keys if k <= configured_limit]
-            else:
-                export_game_keys = all_game_keys
+            # Export all logged games. This keeps export resilient when UI limits are
+            # edited with free-form numeric input (including values > 10).
+            export_game_keys = all_game_keys
 
             # Filter out games that have no player/action rows (these are often empty
             # placeholder games created by session logic like a logged game_start)
@@ -258,7 +255,7 @@ class GameMainExportMixin:
 
             total_games = len(export_game_keys)
             if total_games == 0:
-                print("No game log data to export (no games with actions within configured game_limit).")
+                print("No game log data to export (no games with action rows).")
                 return
 
             # Derive overall game wins from per-game logged match results to be robust
@@ -344,6 +341,8 @@ class GameMainExportMixin:
             overall_summary_data = [
                 ("P1 Model", first_game_data["p1_model"] or "Unknown"),
                 ("P2 Model", first_game_data["p2_model"] or "Unknown"),
+                ("Configured Game Limit", max(1, as_int(getattr(self, "game_limit", 1), 1))),
+                ("Configured Match Limit", max(1, as_int(getattr(self, "match_limit", 1), 1))),
                 ("Game", total_games),
                 ("P1 Wins", p1_wins),
                 ("P2 Wins", p2_wins),

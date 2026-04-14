@@ -62,6 +62,39 @@ SB_THUMB_HOVER = (145, 135, 120)
 SB_THUMB_DRAG  = (130, 120, 105)
 
 class GameMainFlowUiMixin:
+    def _set_start_alert(self, message: str, duration_ms: int = 3600) -> None:
+        self._start_alert_message = message
+        self._start_alert_until = pygame.time.get_ticks() + duration_ms
+
+    def _parse_limit_input(self, raw_value: str) -> int | None:
+        text = str(raw_value).strip()
+        if not text:
+            return None
+        try:
+            return int(text)
+        except (TypeError, ValueError):
+            return None
+
+    def _sync_limit_values_from_inputs(self) -> tuple[int | None, int | None]:
+        game_input = self._parse_limit_input(self._game_limit_input)
+        match_input = self._parse_limit_input(self._match_limit_input)
+        if game_input is not None:
+            self.game_limit = game_input
+        if match_input is not None:
+            self.match_limit = match_input
+        return game_input, match_input
+
+    def _attempt_start_session(self) -> bool:
+        game_input, match_input = self._sync_limit_values_from_inputs()
+        if game_input is None or match_input is None or self.game_limit < 1 or self.match_limit < 1:
+            self._set_start_alert(
+                "Game Limit, Match limit have to be number and >=1 user have to edit it first"
+            )
+            return False
+        self._start_alert_message = ''
+        self.screen1init()
+        return True
+
     def _is_endgame_popup_active(self) -> bool:
         return self.game_state in ('win', 'lose')
 
@@ -384,11 +417,19 @@ class GameMainFlowUiMixin:
 
     def _handle_completed_match(self, winner_label: str) -> dict:
         """Update match/game/session counters and return transition flags."""
+        try:
+            safe_match_limit = max(1, int(self.match_limit))
+        except (TypeError, ValueError):
+            safe_match_limit = 1
+        try:
+            safe_game_limit = max(1, int(self.game_limit))
+        except (TypeError, ValueError):
+            safe_game_limit = 1
         state = SessionProgress(
             current_game=self.current_game,
             current_match=self.current_match,
-            match_limit=self.match_limit,
-            game_limit=self.game_limit,
+            match_limit=safe_match_limit,
+            game_limit=safe_game_limit,
             game_p1_match_wins=self.game_p1_match_wins,
             game_p2_match_wins=self.game_p2_match_wins,
             total_games_p1=self.total_games_p1,
@@ -427,9 +468,8 @@ class GameMainFlowUiMixin:
         return row_to_team.get(int(row_index), 0)
 
     def screen1init(self):
-
-        self.game_limit = max(self._game_limit_min, min(self._game_limit_max, self.game_limit))
-        self.match_limit = max(self._match_limit_min, min(self._match_limit_max, self.match_limit))
+        self.game_limit = max(self._game_limit_min, self.game_limit)
+        self.match_limit = max(self._match_limit_min, self.match_limit)
 
         p1_row = self.p1_sel_cursor.grid[0]
         p2_row = self.p2_sel_cursor.grid[0]

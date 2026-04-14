@@ -187,9 +187,27 @@ class GameMainUpdateMixin:
                 if self._settings_popup_open:
                     # Keyboard handling while popup open
                     if event.type == pygame.KEYDOWN:
+                        if self._settings_popup_page == 'main' and getattr(self, '_active_limit_input', None):
+                            target = '_game_limit_input' if self._active_limit_input == 'game' else '_match_limit_input'
+                            current = getattr(self, target, '')
+                            if event.key == pygame.K_BACKSPACE:
+                                setattr(self, target, current[:-1])
+                                continue
+                            if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                                self._sync_limit_values_from_inputs()
+                                self._active_limit_input = None
+                                continue
+                            if event.key == pygame.K_TAB:
+                                self._active_limit_input = 'match' if self._active_limit_input == 'game' else 'game'
+                                continue
+                            if event.unicode and event.unicode.isdigit():
+                                setattr(self, target, f"{current}{event.unicode}")
+                                continue
+
                         if event.key == pygame.K_x:
                             self._settings_popup_open = False
                             self._settings_popup_page = 'main'
+                            self._active_limit_input = None
                             continue
                         if self._settings_popup_page == 'balance':
                             if event.key in (pygame.K_UP, pygame.K_DOWN):
@@ -206,7 +224,7 @@ class GameMainUpdateMixin:
                                 print("Now using:", self.settings.balance_mode)
                                 continue
 
-                    # Mouse handling (allow slider interactions inside popup)
+                    # Mouse handling inside popup
                     if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                         # Close or click-outside
                         if self._settings_close_rect.collidepoint(event.pos):
@@ -216,6 +234,7 @@ class GameMainUpdateMixin:
                         if not self._settings_popup_rect.collidepoint(event.pos):
                             self._settings_popup_open = False
                             self._settings_popup_page = 'main'
+                            self._active_limit_input = None
                             continue
 
                         # Main page buttons
@@ -227,22 +246,15 @@ class GameMainUpdateMixin:
                                 self._toggle_resolution()
                                 continue
 
-                            # Auto control removed
-
-                            # Game slider
-                            if hasattr(self, "_game_limit_slider_rect") and self._game_limit_slider_rect.collidepoint(event.pos):
-                                self._game_limit_slider_dragging = True
-                                if hasattr(self, "_game_limit_value_from_pos"):
-                                    self.game_limit = self._game_limit_value_from_pos(event.pos[0])
+                            if self._game_limit_box_rect.collidepoint(event.pos):
+                                self._active_limit_input = 'game'
                                 continue
 
-                            # Match slider
-                            if hasattr(self, "_match_limit_slider_rect") and self._match_limit_slider_rect.collidepoint(event.pos):
-                                self._match_limit_slider_dragging = True
-                                if hasattr(self, "_match_limit_value_from_pos"):
-                                    self.match_limit = self._match_limit_value_from_pos(event.pos[0])
+                            if self._match_limit_box_rect.collidepoint(event.pos):
+                                self._active_limit_input = 'match'
                                 continue
 
+                            self._active_limit_input = None
                             continue
 
                         # Back button from subpage
@@ -262,31 +274,13 @@ class GameMainUpdateMixin:
                                 break
                         continue
 
-                    # Mouse up: stop dragging sliders inside popup
-                    if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-                        if hasattr(self, "_match_limit_slider_dragging") and self._match_limit_slider_dragging:
-                            self._match_limit_slider_dragging = False
-                        if hasattr(self, "_game_limit_slider_dragging") and self._game_limit_slider_dragging:
-                            self._game_limit_slider_dragging = False
-                        continue
-
-                    # Mouse motion: update slider values when dragging
-                    if event.type == pygame.MOUSEMOTION:
-                        if hasattr(self, "_game_limit_slider_dragging") and self._game_limit_slider_dragging:
-                            if hasattr(self, "_game_limit_value_from_pos"):
-                                self.game_limit = self._game_limit_value_from_pos(event.pos[0])
-                            continue
-                        if hasattr(self, "_match_limit_slider_dragging") and self._match_limit_slider_dragging:
-                            if hasattr(self, "_match_limit_value_from_pos"):
-                                self.match_limit = self._match_limit_value_from_pos(event.pos[0])
-                            continue
                     if event.type in (pygame.MOUSEWHEEL,):
                         continue
 
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_RETURN:
                         if self.p1_sel_cursor.show and self.p2_sel_cursor.show:
-                            self.screen1init()
+                            self._attempt_start_session()
             # ESC exits the app on AI-select page
                     if event.key == pygame.K_ESCAPE:
                         pygame.quit()
@@ -370,7 +364,7 @@ class GameMainUpdateMixin:
                             self._settings_popup_page = 'main'
                         elif focus == 'start':
                             if self.p1_sel_cursor.show and self.p2_sel_cursor.show:
-                                self.screen1init()
+                                self._attempt_start_session()
                         elif focus == 'import_ai':
                             try:
                                 self._open_exports_folder()
@@ -399,7 +393,7 @@ class GameMainUpdateMixin:
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     if event.button == 1:
                         if self._start_button_rect.collidepoint(event.pos) and self.p1_sel_cursor.show and self.p2_sel_cursor.show:
-                            self.screen1init()
+                            self._attempt_start_session()
                             continue
                         # Import AI button opens the exports folder for the user to place AI files
                         if hasattr(self, '_import_ai_button_rect') and self._import_ai_button_rect.collidepoint(event.pos):
@@ -422,30 +416,13 @@ class GameMainUpdateMixin:
                         if self._settings_button_rect.collidepoint(event.pos):
                             self._settings_popup_open = not self._settings_popup_open
                             self._settings_popup_page = 'main'
-                            # cancel any active dragging when opening settings
-                            self._match_limit_slider_dragging = False
-                            self._game_limit_slider_dragging = False
+                            self._active_limit_input = None
                             continue
                         if (self._map_select_button_rect.collidepoint(event.pos) or self._map_preview_thumb_rect.collidepoint(event.pos)):
                             self._map_popup_open = True
                             self._map_popup_temp_selection = self._clamp_map_index(self.map_number)
                             self._map_popup_hover_index = None
                             self._map_popup_select_hovered = False
-                            # cancel any active dragging
-                            self._match_limit_slider_dragging = False
-                            self._game_limit_slider_dragging = False
-                            continue
-                        # Game slider (higher on UI)
-                        if hasattr(self, "_game_limit_slider_rect") and self._game_limit_slider_rect.collidepoint(event.pos):
-                            self._game_limit_slider_dragging = True
-                            if hasattr(self, "_game_limit_value_from_pos"):
-                                self.game_limit = self._game_limit_value_from_pos(event.pos[0])
-                            continue
-                        # Match slider
-                        if hasattr(self, "_match_limit_slider_rect") and self._match_limit_slider_rect.collidepoint(event.pos):
-                            self._match_limit_slider_dragging = True
-                            if hasattr(self, "_match_limit_value_from_pos"):
-                                self.match_limit = self._match_limit_value_from_pos(event.pos[0])
                             continue
 
                         # Scrollbar thumbs
@@ -488,10 +465,6 @@ class GameMainUpdateMixin:
                     self._model_sb_dragging_right = False
                     if event.button == 1:
                         self._model_scroll_dragging = [False, False]
-                        if hasattr(self, "_match_limit_slider_dragging") and self._match_limit_slider_dragging:
-                            self._match_limit_slider_dragging = False
-                        if hasattr(self, "_game_limit_slider_dragging") and self._game_limit_slider_dragging:
-                            self._game_limit_slider_dragging = False
 
                 elif event.type == pygame.MOUSEMOTION:
 
@@ -503,17 +476,10 @@ class GameMainUpdateMixin:
                         new_offset = self._model_offset_from_thumb(mouse_pos[1], False)
                         self._model_scroll_offset[1] = new_offset
 
-                    if hasattr(self, "_game_limit_slider_dragging") and self._game_limit_slider_dragging:
-                        if hasattr(self, "_game_limit_value_from_pos"):
-                            self.game_limit = self._game_limit_value_from_pos(event.pos[0])
-                    elif hasattr(self, "_match_limit_slider_dragging") and self._match_limit_slider_dragging:
-                        if hasattr(self, "_match_limit_value_from_pos"):
-                            self.match_limit = self._match_limit_value_from_pos(event.pos[0])
-                    else:
-                        for idx, dragging in enumerate(self._model_scroll_dragging):
-                            if dragging:
-                                center_y = event.pos[1] - self._model_scroll_drag_offset[idx]
-                                self._model_scroll_offset[idx] = self._model_offset_from_thumb(center_y, idx == 0)
+                    for idx, dragging in enumerate(self._model_scroll_dragging):
+                        if dragging:
+                            center_y = event.pos[1] - self._model_scroll_drag_offset[idx]
+                            self._model_scroll_offset[idx] = self._model_offset_from_thumb(center_y, idx == 0)
                     self._model_scroll_offset[0] = max(0, min(self._model_scroll_offset[0], self._model_max_offset()))
                     self._model_scroll_offset[1] = max(0, min(self._model_scroll_offset[1], self._model_max_offset()))
 
