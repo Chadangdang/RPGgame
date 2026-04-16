@@ -74,8 +74,8 @@ IMPORTANT NOTES
 - Invalid files will be rejected
 
 TIPS
-- Start simple (e.g., always attack or random behavior)
-- Improve step by step
-- Use logs to debug behavior
-- Experiment with different strategies
+ - Start simple (e.g., always attack or random behavior)
+ - Improve step by step
+ - Use logs to debug behavior
+ - Experiment with different strategies
 """
