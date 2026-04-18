@@ -15,17 +15,8 @@ from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from datetime import datetime
 import os
 
-AI_SELECTION_LABELS = (
-    'Player Input',
-    'Baseline AI',
-    'Random AI',
-    'Personality Cores AI',
-    'Aggressive',
-    'Strategic',
-    'Survival',
-    'Kill One By One AI',
-    'Disable AI'
-)
+def AI_SELECTION_LABELS() -> list[str]:
+    return GM.get_ai_labels()
 
 
 
@@ -71,7 +62,7 @@ class GameMainRenderMixin:
         return max(_rows_height(left_rows), _rows_height(right_rows))
 
     def _model_max_offset(self) -> int:
-        return max(0, len(AI_SELECTION_LABELS) - self._model_visible_rows)
+        return max(0, len(AI_SELECTION_LABELS()) - self._model_visible_rows)
 
     def _model_column_origin(self, is_left: bool) -> tuple[int, int]:
         return (self._model_left_x if is_left else self._model_right_x, self._model_list_top)
@@ -98,7 +89,7 @@ class GameMainRenderMixin:
     def _model_row_rects(self, is_left: bool) -> list[tuple[int, pygame.Rect]]:
         col_idx = 0 if is_left else 1
         start = self._model_scroll_offset[col_idx]
-        end = min(len(AI_SELECTION_LABELS), start + self._model_visible_rows)
+        end = min(len(AI_SELECTION_LABELS()), start + self._model_visible_rows)
         origin_x, origin_y = self._model_column_origin(is_left)
 
         rows: list[tuple[int, pygame.Rect]] = []
@@ -132,7 +123,7 @@ class GameMainRenderMixin:
             thumb_h = track.height
             thumb_y = track.y
         else:
-            thumb_h = max(32, int(track.height * (self._model_visible_rows / len(AI_SELECTION_LABELS))))
+            thumb_h = max(32, int(track.height * (self._model_visible_rows / len(AI_SELECTION_LABELS()))))
             thumb_span = track.height - thumb_h
             ratio = (col_offset / max_offset) if max_offset else 0
             thumb_y = track.y + int(ratio * thumb_span)
@@ -143,7 +134,7 @@ class GameMainRenderMixin:
         if max_offset == 0:
             return 0
         track = self._model_track_rect(is_left)
-        thumb_h = max(32, int(track.height * (self._model_visible_rows / len(AI_SELECTION_LABELS))))
+        thumb_h = max(32, int(track.height * (self._model_visible_rows / len(AI_SELECTION_LABELS()))))
         thumb_span = max(1, track.height - thumb_h)
         ratio = (thumb_center_y - track.y - thumb_h / 2) / thumb_span
         ratio = max(0.0, min(1.0, ratio))
@@ -234,7 +225,7 @@ class GameMainRenderMixin:
             self.screen.blit(p1_title, p1_title.get_rect(center=p1_banner.center))
             self.screen.blit(p2_title, p2_title.get_rect(center=p2_banner.center))
 
-            model_names = AI_SELECTION_LABELS
+            model_names = AI_SELECTION_LABELS()
 
             def draw_column(is_left: bool) -> None:
                 mouse_pos = pygame.mouse.get_pos()
@@ -671,6 +662,82 @@ class GameMainRenderMixin:
                     thumb_y = text_y + int((available_h - thumb_h) * (current_scroll / max_scroll))
                     pygame.draw.rect(self.screen, (120, 120, 120), pygame.Rect(bar_x, thumb_y, bar_w, thumb_h))
 
+            if getattr(self, '_import_popup_open', False):
+                overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+                overlay.fill((0, 0, 0, 145))
+                self.screen.blit(overlay, (0, 0))
+
+                pygame.draw.rect(self.screen, (247, 242, 234), self._import_modal_rect, border_radius=8)
+                pygame.draw.rect(self.screen, (0, 0, 0), self._import_modal_rect, 3, border_radius=8)
+                close_text = self.font_s.render('X', False, (0, 0, 0))
+                self.screen.blit(close_text, close_text.get_rect(center=self._import_modal_close_rect.center))
+
+                title = self.font_m.render('AI Import', False, (0, 0, 0))
+                self.screen.blit(title, title.get_rect(midtop=(self._import_modal_rect.centerx, self._import_modal_rect.y + 22)))
+                info = self.font_s.render('Choose one action to continue.', False, (40, 40, 40))
+                self.screen.blit(info, info.get_rect(midtop=(self._import_modal_rect.centerx, self._import_modal_rect.y + 92)))
+
+                mouse_pos = pygame.mouse.get_pos()
+                dl_hover = self._import_modal_download_rect.collidepoint(mouse_pos)
+                up_hover = self._import_modal_upload_rect.collidepoint(mouse_pos)
+                pygame.draw.rect(self.screen, (220, 220, 220) if dl_hover else (235, 235, 235), self._import_modal_download_rect, border_radius=6)
+                pygame.draw.rect(self.screen, (0, 0, 0), self._import_modal_download_rect, 2, border_radius=6)
+                pygame.draw.rect(self.screen, (220, 220, 220) if up_hover else (235, 235, 235), self._import_modal_upload_rect, border_radius=6)
+                pygame.draw.rect(self.screen, (0, 0, 0), self._import_modal_upload_rect, 2, border_radius=6)
+
+                dl_text = self.font_s.render('Download AI Template', False, (0, 0, 0))
+                up_text = self.font_s.render('Import AI', False, (0, 0, 0))
+                self.screen.blit(dl_text, dl_text.get_rect(center=self._import_modal_download_rect.center))
+                self.screen.blit(up_text, up_text.get_rect(center=self._import_modal_upload_rect.center))
+
+            if getattr(self, '_register_popup_open', False):
+                overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+                overlay.fill((0, 0, 0, 155))
+                self.screen.blit(overlay, (0, 0))
+
+                pygame.draw.rect(self.screen, (247, 242, 234), self._register_modal_rect, border_radius=8)
+                pygame.draw.rect(self.screen, (0, 0, 0), self._register_modal_rect, 3, border_radius=8)
+                close_text = self.font_s.render('X', False, (0, 0, 0))
+                self.screen.blit(close_text, close_text.get_rect(center=self._register_close_rect.center))
+
+                title = self.font_m.render('Register Custom AI', False, (0, 0, 0))
+                self.screen.blit(title, title.get_rect(midtop=(self._register_modal_rect.centerx, self._register_modal_rect.y + 18)))
+
+                name_label = self.font_s.render('AI Name (required, max 20)', False, (0, 0, 0))
+                desc_label = self.font_s.render('Description (optional, max 50)', False, (0, 0, 0))
+                file_label = self.font_s.render('Upload File (required, .py only)', False, (0, 0, 0))
+                self.screen.blit(name_label, (self._register_name_rect.x, self._register_name_rect.y - 28))
+                self.screen.blit(desc_label, (self._register_desc_rect.x, self._register_desc_rect.y - 28))
+                self.screen.blit(file_label, (self._register_file_rect.x, self._register_file_rect.y - 28))
+
+                name_active = self._register_active_field == 'name'
+                desc_active = self._register_active_field == 'description'
+                pygame.draw.rect(self.screen, (255, 255, 255), self._register_name_rect)
+                pygame.draw.rect(self.screen, (32, 32, 32), self._register_name_rect, 2 if not name_active else 3)
+                pygame.draw.rect(self.screen, (255, 255, 255), self._register_desc_rect)
+                pygame.draw.rect(self.screen, (32, 32, 32), self._register_desc_rect, 2 if not desc_active else 3)
+
+                name_value = self.font_s.render(getattr(self, '_register_name_input', ''), False, (0, 0, 0))
+                desc_value = self.font_ss.render(getattr(self, '_register_desc_input', ''), False, (0, 0, 0))
+                self.screen.blit(name_value, (self._register_name_rect.x + 10, self._register_name_rect.y + 10))
+                self.screen.blit(desc_value, (self._register_desc_rect.x + 10, self._register_desc_rect.y + 10))
+
+                upload_hover = self._register_file_rect.collidepoint(pygame.mouse.get_pos())
+                pygame.draw.rect(self.screen, (220, 220, 220) if upload_hover else (236, 236, 236), self._register_file_rect, border_radius=5)
+                pygame.draw.rect(self.screen, (0, 0, 0), self._register_file_rect, 2, border_radius=5)
+                upload_text = self.font_s.render('Choose .py File', False, (0, 0, 0))
+                self.screen.blit(upload_text, upload_text.get_rect(center=self._register_file_rect.center))
+
+                selected_name = os.path.basename(getattr(self, '_register_file_path', '')) if getattr(self, '_register_file_path', '') else 'No file selected'
+                file_text = self.font_ss.render(selected_name, False, (30, 30, 30))
+                self.screen.blit(file_text, (self._register_file_rect.right + 16, self._register_file_rect.y + 14))
+
+                submit_hover = self._register_submit_rect.collidepoint(pygame.mouse.get_pos())
+                pygame.draw.rect(self.screen, (202, 242, 184) if submit_hover else (214, 250, 196), self._register_submit_rect, border_radius=6)
+                pygame.draw.rect(self.screen, (0, 0, 0), self._register_submit_rect, 2, border_radius=6)
+                submit_text = self.font_s.render('Submit', False, (0, 0, 0))
+                self.screen.blit(submit_text, submit_text.get_rect(center=self._register_submit_rect.center))
+
             # Draw the map 'SELECT' box only when the map popup is active
             if getattr(self, '_map_popup_open', False) and not getattr(self, '_instr_popup_open', False):
                 select_color = (199, 255, 178) if not self._map_popup_select_hovered else (182, 235, 160)
@@ -755,8 +822,9 @@ class GameMainRenderMixin:
             # AI Type vs AI Type (May hide later)
             p1_row = self.p1_sel_cursor.grid[0]
             p2_row = self.p2_sel_cursor.grid[0]
-            p1_label = AI_SELECTION_LABELS[p1_row] if 0 <= p1_row < len(AI_SELECTION_LABELS) else 'Unknown'
-            p2_label = AI_SELECTION_LABELS[p2_row] if 0 <= p2_row < len(AI_SELECTION_LABELS) else 'Unknown'
+            labels = AI_SELECTION_LABELS()
+            p1_label = labels[p1_row] if 0 <= p1_row < len(labels) else 'Unknown'
+            p2_label = labels[p2_row] if 0 <= p2_row < len(labels) else 'Unknown'
             text = self.font_ss.render(f'{p1_label} vs {p2_label}', False, (0, 0, 0))
             text_rect = text.get_rect(bottomleft=(50, 30))
             self.screen.blit(text, text_rect)

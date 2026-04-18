@@ -14,22 +14,15 @@ import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from datetime import datetime
 import os
+from tkinter import Tk, filedialog
 from types import SimpleNamespace
 from insert.Ai_insertion_instruction import AI_INSERTION_INSTRUCTION
+from insert import ai_import_manager
 
 from game.balance import balance_controller
 
-AI_SELECTION_LABELS = (
-    'Player Input',
-    'Baseline AI',
-    'Random AI',
-    'Personality Cores AI',
-    'Aggressive Personality Cores AI',
-    'Strategic Personality Cores AI',
-    'Survival Personality Cores AI',
-    'Kill One By One AI',
-    'Disable AI'
-)
+def AI_SELECTION_LABELS() -> list[str]:
+    return GM.get_ai_labels()
 
 
 
@@ -93,7 +86,7 @@ class GameMainInitMixin:
         self.laptop_button_rect = pygame.Rect(220, 405, 250, 55)
         self.laptop_button_hovered = False
 
-        ai_choice_count = len(AI_SELECTION_LABELS)
+        ai_choice_count = len(AI_SELECTION_LABELS())
         self.menu_cursor = HoverMenuCursor(self.screen, (420, 60), (ai_choice_count, 2))
         self.p1_sel_cursor = SelectMenuCursor(self.screen, (420, 60), (ai_choice_count, 1))
         self.p2_sel_cursor = SelectMenuCursor(self.screen, (420, 60), (ai_choice_count, 1))
@@ -232,6 +225,23 @@ class GameMainInitMixin:
         # Import AI button (bottom-left on AI select screen)
         self._import_ai_button_rect = pygame.Rect(40, 903, 220, 48)
         self._import_ai_button_hovered = False
+        self._import_popup_open = False
+        self._import_modal_rect = pygame.Rect((WIDTH - 620) // 2, (HEIGHT - 320) // 2, 620, 320)
+        self._import_modal_close_rect = pygame.Rect(self._import_modal_rect.right - 52, self._import_modal_rect.y + 16, 34, 34)
+        self._import_modal_download_rect = pygame.Rect(self._import_modal_rect.x + 60, self._import_modal_rect.y + 180, 230, 54)
+        self._import_modal_upload_rect = pygame.Rect(self._import_modal_rect.right - 290, self._import_modal_rect.y + 180, 230, 54)
+
+        self._register_popup_open = False
+        self._register_modal_rect = pygame.Rect((WIDTH - 760) // 2, (HEIGHT - 520) // 2, 760, 520)
+        self._register_close_rect = pygame.Rect(self._register_modal_rect.right - 52, self._register_modal_rect.y + 16, 34, 34)
+        self._register_name_rect = pygame.Rect(self._register_modal_rect.x + 48, self._register_modal_rect.y + 112, 664, 44)
+        self._register_desc_rect = pygame.Rect(self._register_modal_rect.x + 48, self._register_modal_rect.y + 208, 664, 84)
+        self._register_file_rect = pygame.Rect(self._register_modal_rect.x + 48, self._register_modal_rect.y + 328, 220, 48)
+        self._register_submit_rect = pygame.Rect(self._register_modal_rect.right - 248, self._register_modal_rect.bottom - 72, 200, 48)
+        self._register_active_field: str | None = None
+        self._register_name_input = ''
+        self._register_desc_input = ''
+        self._register_file_path = ''
         # Circular Instructions button placed to the right of Import AI
         instr_x = self._import_ai_button_rect.right + 16
         instr_y = self._import_ai_button_rect.y
@@ -438,7 +448,7 @@ class GameMainInitMixin:
         self._ai_log_len: dict[object, int] = {}
         self._ai_pending_lines: dict[int, list[str]] = {}
         self._char_snapshots: dict[int, dict] = {}
-        self._ai_type_labels = AI_SELECTION_LABELS
+        self._ai_type_labels = AI_SELECTION_LABELS()
         self._pending_ko_sources: dict[int, dict] = {}
         self._pending_ko_sources_by_name: dict[tuple[str, int], dict] = {}
 
@@ -463,7 +473,26 @@ class GameMainInitMixin:
         self.last_match_duration = 0.0     
         
         self.obj_control_team1 = 0
-        self.obj_control_team2 = 0  
+        self.obj_control_team2 = 0
+
+    def _open_file_picker(self) -> str:
+        root = Tk()
+        root.withdraw()
+        root.attributes('-topmost', True)
+        file_path = filedialog.askopenfilename(
+            title='Select Python AI File',
+            filetypes=[('Python files', '*.py')],
+        )
+        root.destroy()
+        return file_path
+
+    def _refresh_ai_selection_ui(self) -> None:
+        labels = AI_SELECTION_LABELS()
+        ai_choice_count = len(labels)
+        self.menu_cursor = HoverMenuCursor(self.screen, (420, 60), (ai_choice_count, 2))
+        self.p1_sel_cursor = SelectMenuCursor(self.screen, (420, 60), (ai_choice_count, 1))
+        self.p2_sel_cursor = SelectMenuCursor(self.screen, (420, 60), (ai_choice_count, 1))
+        self._ai_type_labels = labels
 
     def _install_mouse_patch(self) -> None:
         """Patch pygame.mouse.get_pos to return base-space coords (divide by scale)."""

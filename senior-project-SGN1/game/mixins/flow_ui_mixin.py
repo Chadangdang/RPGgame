@@ -18,17 +18,8 @@ import os
 from game.balance import balance_controller
 from game.session_limits import SessionProgress, apply_match_result
 
-AI_SELECTION_LABELS = (
-    'Player Input',
-    'Baseline AI',
-    'Random AI',
-    'Personality Cores AI',
-    'Aggressive Personality Cores AI',
-    'Strategic Personality Cores AI',
-    'Survival Personality Cores AI',
-    'Kill One By One AI',
-    'Disable AI'
-)
+def AI_SELECTION_LABELS() -> list[str]:
+    return GM.get_ai_labels()
 
 
 
@@ -275,7 +266,7 @@ class GameMainFlowUiMixin:
         item_h = 44
         gap = 10
         top_y = list_rect.y
-        for i, name in enumerate(AI_SELECTION_LABELS):
+        for i, name in enumerate(AI_SELECTION_LABELS()):
             r = pygame.Rect(list_rect.x, top_y + i*(item_h + gap), list_rect.w, item_h)
             hovered = r.collidepoint(mouse_pos)
             if self._model_modal_for == 1:
@@ -454,18 +445,11 @@ class GameMainFlowUiMixin:
         return result
 
     def _selection_row_to_team_id(self, row_index: int) -> int:
-        row_to_team = {
-            0: 0,  # Player Input
-            1: 1,  # Baseline AI
-            2: 2,  # Random AI
-            3: 3,  # Personality Cores AI
-            4: 4,  # Aggressive Personality Cores AI
-            5: 5,  # Strategic Personality Cores AI
-            6: 6,  # Survival Personality Cores AI
-            7: 7,  # Kill One By One AI (Hard)
-            8: 8,  # Disable AI
-        }
-        return row_to_team.get(int(row_index), 0)
+        labels = AI_SELECTION_LABELS()
+        idx = int(row_index)
+        if idx < 0 or idx >= len(labels):
+            return 0
+        return idx
 
     def screen1init(self):
         self.game_limit = max(self._game_limit_min, self.game_limit)

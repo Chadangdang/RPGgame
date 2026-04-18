@@ -15,18 +15,10 @@ from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from datetime import datetime
 import os
 from game.balance import balance_controller
+from insert import ai_import_manager
 
-AI_SELECTION_LABELS = (
-    'Player Input',
-    'Baseline AI',
-    'Random AI',
-    'Personality Cores AI',
-    'Aggressive Personality Cores AI',
-    'Strategic Personality Cores AI',
-    'Survival Personality Cores AI',
-    'Kill One By One AI',
-    'Disable AI'
-)
+def AI_SELECTION_LABELS() -> list[str]:
+    return GM.get_ai_labels()
 
 
 
@@ -98,7 +90,7 @@ class GameMainUpdateMixin:
                 self._map_popup_hover_index = None
 
             # Keep cursor bounds in sync with model count
-            total_rows = len(AI_SELECTION_LABELS)
+            total_rows = len(AI_SELECTION_LABELS())
             self.menu_cursor.bound = (total_rows, 2)
             self.p1_sel_cursor.bound = (total_rows, 1)
             self.p2_sel_cursor.bound = (total_rows, 1)
@@ -181,6 +173,103 @@ class GameMainUpdateMixin:
                             self._instr_popup_open = False
                             continue
                     # swallow other mouse/key events while popup open
+                    if event.type in (pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION, pygame.MOUSEWHEEL, pygame.KEYDOWN):
+                        continue
+
+                if getattr(self, '_import_popup_open', False):
+                    if event.type == pygame.KEYDOWN and event.key in (pygame.K_x, pygame.K_ESCAPE):
+                        self._import_popup_open = False
+                        continue
+                    if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                        if self._import_modal_close_rect.collidepoint(event.pos):
+                            self._import_popup_open = False
+                            continue
+                        if self._import_modal_download_rect.collidepoint(event.pos):
+                            try:
+                                ai_import_manager.download_template()
+                                self._set_start_alert('AI_template.py downloaded! Please check your Downloads folder.', 4200)
+                            except Exception as e:
+                                self._set_start_alert(f'Download failed: {e}', 4200)
+                            continue
+                        if self._import_modal_upload_rect.collidepoint(event.pos):
+                            self._import_popup_open = False
+                            self._register_popup_open = True
+                            self._register_active_field = None
+                            continue
+                        if not self._import_modal_rect.collidepoint(event.pos):
+                            self._import_popup_open = False
+                            continue
+                    if event.type in (pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION, pygame.MOUSEWHEEL, pygame.KEYDOWN):
+                        continue
+
+                if getattr(self, '_register_popup_open', False):
+                    if event.type == pygame.KEYDOWN:
+                        if event.key in (pygame.K_x, pygame.K_ESCAPE):
+                            self._register_popup_open = False
+                            self._register_active_field = None
+                            continue
+                        if self._register_active_field in ('name', 'description'):
+                            target_attr = '_register_name_input' if self._register_active_field == 'name' else '_register_desc_input'
+                            max_len = 20 if self._register_active_field == 'name' else 50
+                            current = getattr(self, target_attr)
+                            if event.key == pygame.K_BACKSPACE:
+                                setattr(self, target_attr, current[:-1])
+                                continue
+                            if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_TAB):
+                                self._register_active_field = 'description' if self._register_active_field == 'name' else None
+                                continue
+                            if event.unicode and event.unicode.isprintable() and len(current) < max_len:
+                                setattr(self, target_attr, current + event.unicode)
+                                continue
+
+                    if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                        if self._register_close_rect.collidepoint(event.pos):
+                            self._register_popup_open = False
+                            self._register_active_field = None
+                            continue
+                        if not self._register_modal_rect.collidepoint(event.pos):
+                            self._register_popup_open = False
+                            self._register_active_field = None
+                            continue
+
+                        if self._register_name_rect.collidepoint(event.pos):
+                            self._register_active_field = 'name'
+                            continue
+                        if self._register_desc_rect.collidepoint(event.pos):
+                            self._register_active_field = 'description'
+                            continue
+                        if self._register_file_rect.collidepoint(event.pos):
+                            selected = self._open_file_picker()
+                            if selected:
+                                self._register_file_path = selected
+                            continue
+                        if self._register_submit_rect.collidepoint(event.pos):
+                            try:
+                                ai_import_manager.import_ai(
+                                    self._register_name_input,
+                                    self._register_desc_input,
+                                    self._register_file_path,
+                                )
+                                old_p1 = min(self.p1_sel_cursor.grid[0], len(AI_SELECTION_LABELS()) - 1)
+                                old_p2 = min(self.p2_sel_cursor.grid[0], len(AI_SELECTION_LABELS()) - 1)
+                                self._refresh_ai_selection_ui()
+                                self.p1_sel_cursor.moveTo((old_p1, 0))
+                                self.p2_sel_cursor.moveTo((old_p2, 1))
+                                self.p1_sel_cursor.show = True
+                                self.p2_sel_cursor.show = True
+                                self.menu_cursor.moveTo((old_p1, 0))
+
+                                self._register_popup_open = False
+                                self._register_active_field = None
+                                self._register_name_input = ''
+                                self._register_desc_input = ''
+                                self._register_file_path = ''
+                                self._set_start_alert('AI imported successfully!', 3600)
+                            except Exception as e:
+                                self._set_start_alert(str(e), 4600)
+                            continue
+
+                        self._register_active_field = None
                     if event.type in (pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION, pygame.MOUSEWHEEL, pygame.KEYDOWN):
                         continue
 
@@ -289,7 +378,7 @@ class GameMainUpdateMixin:
 
                     # Arrow keys: navigate model list + button focus
                     elif event.key in (pygame.K_UP, pygame.K_DOWN, pygame.K_LEFT, pygame.K_RIGHT):
-                        max_row = len(AI_SELECTION_LABELS) - 1
+                        max_row = len(AI_SELECTION_LABELS()) - 1
                         focus = getattr(self, '_kb_focus', 'model_list')
 
                         if focus == 'model_list':
@@ -366,10 +455,7 @@ class GameMainUpdateMixin:
                             if self.p1_sel_cursor.show and self.p2_sel_cursor.show:
                                 self._attempt_start_session()
                         elif focus == 'import_ai':
-                            try:
-                                self._open_exports_folder()
-                            except Exception:
-                                print('Import AI action failed')
+                            self._import_popup_open = True
                         elif focus == 'info':
                             self._instr_popup_open = True
                         elif focus == 'map_selection':
@@ -397,10 +483,7 @@ class GameMainUpdateMixin:
                             continue
                         # Import AI button opens the exports folder for the user to place AI files
                         if hasattr(self, '_import_ai_button_rect') and self._import_ai_button_rect.collidepoint(event.pos):
-                            try:
-                                self._open_exports_folder()
-                            except Exception:
-                                print('Import AI action failed')
+                            self._import_popup_open = True
                             continue
                         # Instructions circular button
                         if hasattr(self, '_instr_button_rect') and self._instr_button_rect.collidepoint(event.pos):

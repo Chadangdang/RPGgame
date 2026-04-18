@@ -1,18 +1,20 @@
 from AI import *
 import pygame
+from insert import ai_import_manager
 
 
-AI_list: list[type[AIFramework]] = [
-    PlayerInput,
-    PerfectPlay,
-    Random,
-    PersonalityCores,
-    AggressivePersonalityCoresAI,
-    StrategicPersonalityCoresAI,
-    SurvivalPersonalityCoresAI,
-    KillOneByOneAI,
-    DisableAI,
-]
+AI_list: list[type[AIFramework]] = ai_import_manager.get_ai_list()
+
+
+def refresh_ai_pool() -> None:
+    global AI_list
+    ai_import_manager.refresh_ai_registry()
+    AI_list = ai_import_manager.get_ai_list()
+
+
+def get_ai_labels() -> list[str]:
+    refresh_ai_pool()
+    return ai_import_manager.get_ai_labels()
 
 class GameMaster:
     def __init__(self) -> None:
@@ -20,6 +22,7 @@ class GameMaster:
         self.roundFinished = False
 
     def setTeams(self, team1: int, team2: int) -> None:
+        refresh_ai_pool()
         self.team1 = AI_list[team1](team=1)
         self.team2 = AI_list[team2](team=2)
         self.activeAI = self.team1
