@@ -891,7 +891,14 @@ class GameMainRenderMixin:
                 upload_text = self.font_s.render('Choose .py File', False, (0, 0, 0))
                 self.screen.blit(upload_text, upload_text.get_rect(center=self._register_file_rect.center))
 
-                selected_name = os.path.basename(getattr(self, '_register_file_path', '')) if getattr(self, '_register_file_path', '') else 'No file selected'
+                selected_file_path = getattr(self, '_register_file_path', '')
+                existing_file_path = getattr(self, '_register_existing_file_path', '')
+                if selected_file_path:
+                    selected_name = os.path.basename(selected_file_path)
+                elif is_edit_mode and existing_file_path:
+                    selected_name = f'Current: {os.path.basename(existing_file_path)}'
+                else:
+                    selected_name = 'No file selected'
                 file_text = self.font_ss.render(selected_name, False, (30, 30, 30))
                 self.screen.blit(file_text, (self._register_file_rect.right + 16, self._register_file_rect.y + 14))
 

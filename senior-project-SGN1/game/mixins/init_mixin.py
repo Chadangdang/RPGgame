@@ -254,6 +254,7 @@ class GameMainInitMixin:
         self._register_desc_scrollbar_rect = pygame.Rect(self._register_desc_rect.right - 12, self._register_desc_rect.y + 10, 6, self._register_desc_rect.height - 20)
         self._register_desc_thumb_rect = pygame.Rect(self._register_desc_scrollbar_rect.x, self._register_desc_scrollbar_rect.y, self._register_desc_scrollbar_rect.width, 40)
         self._register_file_path = ''
+        self._register_existing_file_path = ''
         self._register_mode = 'create'  # create | edit
         self._register_edit_original_name = ''
         self._custom_ai_menu_open = False
@@ -552,6 +553,7 @@ class GameMainInitMixin:
         self._register_desc_scroll_y = 0
         self._register_desc_scroll_dragging = False
         self._register_file_path = ''
+        self._register_existing_file_path = ''
         self._register_mode = 'create'
         self._register_edit_original_name = ''
 

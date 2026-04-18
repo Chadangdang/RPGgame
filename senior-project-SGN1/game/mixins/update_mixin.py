@@ -258,6 +258,7 @@ class GameMainUpdateMixin:
                                 self._register_desc_scroll_y = 0
                                 self._register_desc_scroll_dragging = False
                                 self._register_file_path = ''
+                                self._register_existing_file_path = str(target.get('file_path', '')).strip()
                                 self._register_active_field = 'name'
                                 self._register_popup_open = True
                             self._custom_ai_menu_open = False
