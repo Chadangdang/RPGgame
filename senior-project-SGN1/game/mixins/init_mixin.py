@@ -1,6 +1,8 @@
 import random
 import pygame
 import sys
+import subprocess
+import shlex
 from Constants import *
 from Field import Field
 from Character import Character
@@ -14,12 +16,36 @@ import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from datetime import datetime
 import os
-from tkinter import Tk, filedialog
 from types import SimpleNamespace
 from insert.Ai_insertion_instruction import AI_INSERTION_INSTRUCTION
 from insert import ai_import_manager
 
 from game.balance import balance_controller
+
+def get_file_path(*, title=None, filetypes=None, default_path="") -> str:
+    try:
+        script = '''
+        set chosenFile to choose file with prompt "Select Python AI File" of type {"public.python-script"}
+        POSIX path of chosenFile
+        '''
+        
+        result = subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True,
+            text=True
+        )
+
+        file_path = result.stdout.strip()
+
+        if file_path:
+            return file_path
+
+    except Exception as e:
+        print(f"Finder dialog failed: {e}")
+
+    # fallback (only if something breaks)
+    print("Fallback to default path")
+    return default_path
 
 def AI_SELECTION_LABELS() -> list[str]:
     return GM.get_ai_labels()
@@ -509,15 +535,11 @@ class GameMainInitMixin:
         self.obj_control_team2 = 0
 
     def _open_file_picker(self) -> str:
-        root = Tk()
-        root.withdraw()
-        root.attributes('-topmost', True)
-        file_path = filedialog.askopenfilename(
+        return get_file_path(
             title='Select Python AI File',
             filetypes=[('Python files', '*.py')],
+            default_path='',
         )
-        root.destroy()
-        return file_path
 
     def _refresh_ai_selection_ui(self) -> None:
         labels = AI_SELECTION_LABELS()

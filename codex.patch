@@ -1,280 +1,164 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/senior-project-SGN1/insert/ai_import_manager.py b/senior-project-SGN1/insert/ai_import_manager.py
-new file mode 100644
-index 0000000000000000000000000000000000000000..dfccd926d775479ef52735d3cfcf29a4fb1bf8ce
---- /dev/null
-+++ b/senior-project-SGN1/insert/ai_import_manager.py
-@@ -0,0 +1,270 @@
-+import ast
-+import importlib.util
-+import json
-+import os
-+import re
-+import shutil
-+from pathlib import Path
-+from types import ModuleType
-+from typing import Any
-+
-+from AI import (
-+    AIFramework,
-+    AggressivePersonalityCoresAI,
-+    DisableAI,
-+    KillOneByOneAI,
-+    PerfectPlay,
-+    PersonalityCores,
-+    PlayerInput,
-+    Random,
-+    StrategicPersonalityCoresAI,
-+    SurvivalPersonalityCoresAI,
-+)
-+
-+ROOT_DIR = Path(__file__).resolve().parents[1]
-+INSERT_DIR = ROOT_DIR / 'insert'
-+REGISTRY_PATH = INSERT_DIR / 'ai_registry.json'
-+TEMPLATE_PATH = INSERT_DIR / 'Ai_template.py'
-+
-+BUILTIN_AI: list[tuple[str, type[AIFramework]]] = [
-+    ('Player Input', PlayerInput),
-+    ('Baseline AI', PerfectPlay),
-+    ('Random AI', Random),
-+    ('Personality Cores AI', PersonalityCores),
-+    ('Aggressive Personality Cores AI', AggressivePersonalityCoresAI),
-+    ('Strategic Personality Cores AI', StrategicPersonalityCoresAI),
-+    ('Survival Personality Cores AI', SurvivalPersonalityCoresAI),
-+    ('Kill One By One AI', KillOneByOneAI),
-+    ('Disable AI', DisableAI),
-+]
-+
-+AI_LIST: list[type[AIFramework]] = [cls for _, cls in BUILTIN_AI]
-+AI_LABELS: list[str] = [label for label, _ in BUILTIN_AI]
-+AI_METADATA: list[dict[str, Any]] = []
-+
-+
-+def _safe_module_name(stem: str) -> str:
-+    cleaned = re.sub(r'[^0-9a-zA-Z_]+', '_', stem)
-+    return f'custom_ai_{cleaned}'
-+
-+
-+def _load_registry() -> list[dict[str, Any]]:
-+    if not REGISTRY_PATH.exists():
-+        return []
+diff --git a/senior-project-SGN1/game/mixins/init_mixin.py b/senior-project-SGN1/game/mixins/init_mixin.py
+index e4e874c2c582a3e804920114fde9c0663baae9ea..f24ca8cff82d9380dc40f24744bf4ade0b1d38e5 100644
+--- a/senior-project-SGN1/game/mixins/init_mixin.py
++++ b/senior-project-SGN1/game/mixins/init_mixin.py
+@@ -1,48 +1,92 @@
+ import random
+ import pygame
+ import sys
+ from Constants import *
+ from Field import Field
+ from Character import Character
+ from Cursor import *
+ import numpy as np
+ import AI
+ from GameMaster import GameMaster
+ import GameMaster as GM
+ from MapData import MapData
+ import openpyxl
+ from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+ from datetime import datetime
+ import os
+-from tkinter import Tk, filedialog
+ from types import SimpleNamespace
+ from insert.Ai_insertion_instruction import AI_INSERTION_INSTRUCTION
+ from insert import ai_import_manager
+ 
+ from game.balance import balance_controller
+ 
++# tkinter made optional for cross-platform compatibility with pygame
++def get_file_path(*, title: str | None = None, filetypes: list[tuple[str, str]] | None = None, default_path: str = "data/input.xlsx") -> str:
++    root = None
 +    try:
-+        data = json.loads(REGISTRY_PATH.read_text(encoding='utf-8'))
-+        if isinstance(data, list):
-+            return [item for item in data if isinstance(item, dict)]
-+    except Exception:
-+        pass
-+    return []
++        from tkinter import Tk, filedialog
++
++        root = Tk()
++        root.withdraw()
++
++        # Force window to front (important for macOS)
++        root.update()
++        root.attributes("-topmost", True)
++        root.lift()
++        root.focus_force()
++
++        dialog_kwargs = {}
++        if title is not None:
++            dialog_kwargs['title'] = title
++        if filetypes is not None:
++            dialog_kwargs['filetypes'] = filetypes
++
++        file_path = filedialog.askopenfilename(**dialog_kwargs)
++
++        if file_path:
++            return file_path
++
++    except Exception as e:
++        print(f"Tkinter failed: {e}")
++    finally:
++        if root is not None:
++            try:
++                root.destroy()
++            except Exception:
++                pass
++
++    print("GUI not available. Please enter file path manually.")
++    file_path = input("Enter file path: ").strip()
++
++    if not file_path:
++        file_path = default_path
++
++    return file_path
 +
 +
-+def _save_registry(entries: list[dict[str, Any]]) -> None:
-+    REGISTRY_PATH.write_text(json.dumps(entries, ensure_ascii=False, indent=2), encoding='utf-8')
 +
-+
-+def _import_module_from_path(file_path: Path) -> ModuleType:
-+    module_name = _safe_module_name(file_path.stem)
-+    spec = importlib.util.spec_from_file_location(module_name, str(file_path))
-+    if spec is None or spec.loader is None:
-+        raise ValueError('Unable to load AI module.')
-+    module = importlib.util.module_from_spec(spec)
-+    spec.loader.exec_module(module)
-+    return module
-+
-+
-+def _extract_ai_class(module: ModuleType) -> type[AIFramework]:
-+    for attr_name in dir(module):
-+        attr = getattr(module, attr_name)
-+        if not isinstance(attr, type):
-+            continue
-+        if attr is AIFramework:
-+            continue
-+        if not issubclass(attr, AIFramework):
-+            continue
-+        if attr.__module__ != module.__name__:
-+            continue
-+        if 'calculate' not in attr.__dict__ or 'activate' not in attr.__dict__:
-+            continue
-+        return attr
-+    raise ValueError('AI class not found. Your file must define a class inheriting AIFramework with calculate() and activate().')
-+
-+
-+def _validate_ai_source(source_code: str) -> None:
-+    try:
-+        tree = ast.parse(source_code)
-+    except SyntaxError as e:
-+        raise ValueError(f'Syntax error in Python file: {e}')
-+
-+    valid = False
-+    for node in tree.body:
-+        if not isinstance(node, ast.ClassDef):
-+            continue
-+
-+        inherits_framework = False
-+        for base in node.bases:
-+            if isinstance(base, ast.Name) and base.id == 'AIFramework':
-+                inherits_framework = True
-+                break
-+            if isinstance(base, ast.Attribute) and base.attr == 'AIFramework':
-+                inherits_framework = True
-+                break
-+        if not inherits_framework:
-+            continue
-+
-+        methods = {n.name for n in node.body if isinstance(n, ast.FunctionDef)}
-+        if 'calculate' in methods and 'activate' in methods:
-+            valid = True
-+            break
-+
-+    if not valid:
-+        raise ValueError('Invalid AI file. It must define a class that inherits AIFramework and implements calculate(self) and activate(self, activationNo).')
-+
-+
-+def _sanitize_dest_name(filename: str) -> str:
-+    stem = re.sub(r'[^0-9a-zA-Z_\-]+', '_', Path(filename).stem).strip('_') or 'custom_ai'
-+    return f'{stem}.py'
-+
-+
-+def _ensure_unique_file(dest_name: str) -> Path:
-+    dest_path = INSERT_DIR / dest_name
-+    if not dest_path.exists():
-+        return dest_path
-+    stem = Path(dest_name).stem
-+    suffix = Path(dest_name).suffix
-+    counter = 1
-+    while True:
-+        candidate = INSERT_DIR / f'{stem}_{counter}{suffix}'
-+        if not candidate.exists():
-+            return candidate
-+        counter += 1
-+
-+
-+def import_ai(ai_name: str, description: str, source_file: str) -> dict[str, Any]:
-+    ai_name = (ai_name or '').strip()
-+    description = (description or '').strip()
-+
-+    if not ai_name:
-+        raise ValueError('AI Name is required.')
-+    if len(ai_name) > 20:
-+        raise ValueError('AI Name must be 20 characters or fewer.')
-+    if len(description) > 50:
-+        raise ValueError('Description must be 50 characters or fewer.')
-+    if not source_file:
-+        raise ValueError('Please choose a Python (.py) file to upload.')
-+
-+    source_path = Path(source_file)
-+    if not source_path.exists() or not source_path.is_file():
-+        raise ValueError('Selected file does not exist.')
-+    if source_path.suffix.lower() != '.py':
-+        raise ValueError('Only .py files are allowed.')
-+
-+    source_code = source_path.read_text(encoding='utf-8')
-+    _validate_ai_source(source_code)
-+
-+    registry = _load_registry()
-+    if any(str(item.get('name', '')).strip().lower() == ai_name.lower() for item in registry):
-+        raise ValueError('AI Name already exists. Please choose a different name.')
-+
-+    INSERT_DIR.mkdir(parents=True, exist_ok=True)
-+    saved_file_path = _ensure_unique_file(_sanitize_dest_name(source_path.name))
-+    shutil.copyfile(source_path, saved_file_path)
-+
-+    module = _import_module_from_path(saved_file_path)
-+    ai_class = _extract_ai_class(module)
-+
-+    entry = {
-+        'name': ai_name,
-+        'description': description,
-+        'file_path': str(saved_file_path.relative_to(ROOT_DIR)).replace('\\', '/'),
-+        'class_name': ai_class.__name__,
-+    }
-+    registry.append(entry)
-+    _save_registry(registry)
-+
-+    refresh_ai_registry()
-+    return entry
-+
-+
-+def refresh_ai_registry() -> None:
-+    global AI_LIST, AI_LABELS, AI_METADATA
-+
-+    ai_classes = [cls for _, cls in BUILTIN_AI]
-+    labels = [label for label, _ in BUILTIN_AI]
-+    metadata: list[dict[str, Any]] = []
-+
-+    registry = _load_registry()
-+    sanitized_registry: list[dict[str, Any]] = []
-+
-+    for item in registry:
-+        name = str(item.get('name', '')).strip()
-+        file_path = str(item.get('file_path', '')).strip()
-+        class_name = str(item.get('class_name', '')).strip()
-+        description = str(item.get('description', '')).strip()
-+
-+        if not name or not file_path or not class_name:
-+            continue
-+
-+        abs_path = ROOT_DIR / file_path
-+        if not abs_path.exists() or abs_path.suffix.lower() != '.py':
-+            continue
-+
-+        try:
-+            module = _import_module_from_path(abs_path)
-+            ai_class = getattr(module, class_name, None)
-+            if not isinstance(ai_class, type) or not issubclass(ai_class, AIFramework):
-+                continue
-+            if 'calculate' not in ai_class.__dict__ or 'activate' not in ai_class.__dict__:
-+                continue
-+        except Exception:
-+            continue
-+
-+        if name.lower() in {label.lower() for label in labels}:
-+            continue
-+
-+        labels.append(name)
-+        ai_classes.append(ai_class)
-+        metadata.append(
-+            {
-+                'name': name,
-+                'description': description,
-+                'file_path': file_path,
-+                'class_name': class_name,
-+            }
-+        )
-+        sanitized_registry.append(
-+            {
-+                'name': name,
-+                'description': description,
-+                'file_path': file_path,
-+                'class_name': class_name,
-+            }
-+        )
-+
-+    AI_LIST = ai_classes
-+    AI_LABELS = labels
-+    AI_METADATA = metadata
-+    _save_registry(sanitized_registry)
-+
-+
-+def get_ai_list() -> list[type[AIFramework]]:
-+    return list(AI_LIST)
-+
-+
-+def get_ai_labels() -> list[str]:
-+    return list(AI_LABELS)
-+
-+
-+def download_template() -> Path:
-+    if not TEMPLATE_PATH.exists():
-+        raise ValueError('AI template file is missing.')
-+
-+    downloads = Path.home() / 'Downloads'
-+    downloads.mkdir(parents=True, exist_ok=True)
-+    target = downloads / 'AI_template.py'
-+    shutil.copyfile(TEMPLATE_PATH, target)
-+    return target
-+
-+
-+refresh_ai_registry()
+ def AI_SELECTION_LABELS() -> list[str]:
+     return GM.get_ai_labels()
+ 
+ 
+ 
+ # === Board placement (top-left of the 640x640 grid) ===
+ # Lower this to move the whole board (and its A-H / 1-8 labels) higher on screen.
+ BOARD_POS_X = WIDTH // 2 - 320
+ BOARD_POS_Y = 40
+ 
+ # === Game Log placement (anchored under the board) ===
+ LOG_W = WIDTH - 40              # full-ish width (tweak as you like)
+ LOG_H = 270                     # panel height (was 280)
+ LOG_X = 20                      # left margin
+ LOG_Y = BOARD_POS_Y + 700
+ 
+ # --- Cream UI colors for the bottom log panel (like your screenshot) ---
+ UI_PANEL  = (251, 247, 242)   # panel fill
+ UI_HEADER = (233, 226, 214)   # header strip
+ UI_BORDER = (30, 30, 30)      # dark border
+ UI_TEXT   = (20, 20, 20)      # text
+ 
+ LOG_COLOR_GAME    = (20, 20, 20)      # black
+ LOG_COLOR_ROUND   = (255, 165, 0)     # orange
+ LOG_COLOR_SUMMARY = (22, 138, 36)     # green
+@@ -487,59 +531,55 @@ class GameMainInitMixin:
+ 
+         # --- Log panel style (header height kept) ---
+         self._log_header_h = 28
+         self._log_line_h = 22
+         self._log_scroll_step = 1   # lines per wheel tick
+         self._log_page_step = 8     # lines per page jump
+ 
+         # --- Log scrolling state ---
+         # 0 shows the newest entry at the top.
+         # Increase this to scroll down to older content.
+         self.log_scroll = 0
+ 
+         # --- Scrollbar interaction state ---
+         self._sb_dragging = False
+         self._sb_drag_offset_y = 0  # mouse offset inside thumb while dragging
+         self._sb_last_geometry = None  # cached geometry for hit tests
+         
+         self.cumulative_time = 0.0
+         self.match_start_time = 0.0
+         self.last_match_duration = 0.0     
+         
+         self.obj_control_team1 = 0
+         self.obj_control_team2 = 0
+ 
+     def _open_file_picker(self) -> str:
+-        root = Tk()
+-        root.withdraw()
+-        root.attributes('-topmost', True)
+-        file_path = filedialog.askopenfilename(
++        return get_file_path(
+             title='Select Python AI File',
+             filetypes=[('Python files', '*.py')],
++            default_path='',
+         )
+-        root.destroy()
+-        return file_path
+ 
+     def _refresh_ai_selection_ui(self) -> None:
+         labels = AI_SELECTION_LABELS()
+         ai_choice_count = len(labels)
+         self.menu_cursor = HoverMenuCursor(self.screen, (420, 60), (ai_choice_count, 2))
+         self.p1_sel_cursor = SelectMenuCursor(self.screen, (420, 60), (ai_choice_count, 1))
+         self.p2_sel_cursor = SelectMenuCursor(self.screen, (420, 60), (ai_choice_count, 1))
+         self._ai_type_labels = labels
+         self._refresh_ai_description_lines()
+ 
+     def _refresh_ai_description_lines(self) -> None:
+         lines = list(getattr(self, '_instr_ai_lines_base', []))
+         custom_entries = [item for item in GM.get_ai_metadata() if item.get('name')]
+         if custom_entries:
+             lines.extend(['', ''])
+             for item in custom_entries:
+                 name = str(item.get('name', '')).strip()
+                 desc = str(item.get('description', '')).strip() or 'No description provided.'
+                 lines.append('')
+                 lines.append(f'{name} (custom AI): {desc}')
+         self._instr_ai_lines = lines
+ 
+     def _custom_ai_map_by_name(self) -> dict[str, dict]:
+         return {str(item.get('name', '')).strip(): item for item in GM.get_ai_metadata() if str(item.get('name', '')).strip()}
+ 
  
 EOF
 )
