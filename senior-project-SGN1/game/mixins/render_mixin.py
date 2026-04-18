@@ -50,6 +50,65 @@ SB_THUMB_HOVER = (145, 135, 120)
 SB_THUMB_DRAG  = (130, 120, 105)
 
 class GameMainRenderMixin:
+    def _draw_start_alert_overlay(self) -> None:
+        """Render startup alert as a top-most responsive banner."""
+        alert_msg = getattr(self, '_start_alert_message', '')
+        if not alert_msg or pygame.time.get_ticks() >= getattr(self, '_start_alert_until', 0):
+            return
+
+        text = str(alert_msg).strip()
+        if not text:
+            return
+
+        max_lines = 3
+        base_padding_x = 40
+        line_spacing = 5
+        min_banner_width = 260
+        max_banner_width = min(WIDTH - 32, 1120)
+        line_height = self.font_s.get_height()
+
+        words = text.split()
+        lines: list[str] = []
+
+        if not words:
+            words = [text]
+
+        current_line = ""
+        for word in words:
+            candidate = word if not current_line else f"{current_line} {word}"
+            candidate_w = self.font_s.size(candidate)[0]
+            if candidate_w <= (max_banner_width - (base_padding_x * 2)):
+                current_line = candidate
+            else:
+                if current_line:
+                    lines.append(current_line)
+                current_line = word
+
+        if current_line:
+            lines.append(current_line)
+
+        if len(lines) > max_lines:
+            visible_lines = lines[:max_lines]
+            while visible_lines[-1] and self.font_s.size(f"{visible_lines[-1]}...")[0] > (max_banner_width - (base_padding_x * 2)):
+                visible_lines[-1] = visible_lines[-1][:-1]
+            visible_lines[-1] = f"{visible_lines[-1].rstrip()}..."
+            lines = visible_lines
+
+        text_width = max(self.font_s.size(line)[0] for line in lines)
+        alert_width = max(min_banner_width, min(max_banner_width, text_width + (base_padding_x * 2)))
+        alert_height = 22 + (len(lines) * line_height) + (max(0, len(lines) - 1) * line_spacing)
+        alert_bg = pygame.Rect(0, 0, alert_width, alert_height)
+        alert_bg.midtop = (WIDTH // 2, 28)
+
+        pygame.draw.rect(self.screen, (247, 207, 111), alert_bg, border_radius=8)
+        pygame.draw.rect(self.screen, (64, 36, 0), alert_bg, 2, border_radius=8)
+
+        y = alert_bg.y + 11
+        for line in lines:
+            alert_text = self.font_s.render(line, False, (30, 18, 0))
+            self.screen.blit(alert_text, alert_text.get_rect(centerx=alert_bg.centerx, y=y))
+            y += line_height + line_spacing
+
     def _model_track_height(self) -> int:
         left_rows = self._model_row_rects(True)
         right_rows = self._model_row_rects(False)
@@ -279,15 +338,6 @@ class GameMainRenderMixin:
                 glow.fill((255, 255, 94, 80))
                 self.screen.blit(glow, (self._start_button_rect.x - 4, self._start_button_rect.y - 4))
                 pygame.draw.rect(self.screen, (255, 255, 94), self._start_button_rect, 3)
-
-            alert_msg = getattr(self, '_start_alert_message', '')
-            if alert_msg and pygame.time.get_ticks() < getattr(self, '_start_alert_until', 0):
-                alert_bg = pygame.Rect(0, 0, 760, 46)
-                alert_bg.midtop = (WIDTH // 2, 24)
-                pygame.draw.rect(self.screen, (247, 207, 111), alert_bg, border_radius=8)
-                pygame.draw.rect(self.screen, (64, 36, 0), alert_bg, 2, border_radius=8)
-                alert_text = self.font_s.render(alert_msg, False, (30, 18, 0))
-                self.screen.blit(alert_text, alert_text.get_rect(center=alert_bg.center))
 
             # (Auto, Game/Match limits now rendered inside Settings popup)
 
@@ -1039,6 +1089,9 @@ class GameMainRenderMixin:
                 self._render_endgame_popup(geom)
             elif self._is_pause_popup_active():
                 self._render_pause_popup(geom)
+
+        # Keep transient alerts above every other UI layer.
+        self._draw_start_alert_overlay()
         
         # --- Present base canvas to the OS window (scaled if needed) ---
         scaled_surface = pygame.transform.smoothscale(self.screen, self.display.get_size())
