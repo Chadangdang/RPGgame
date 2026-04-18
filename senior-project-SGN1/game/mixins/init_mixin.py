@@ -248,6 +248,11 @@ class GameMainInitMixin:
         self._register_active_field: str | None = None
         self._register_name_input = ''
         self._register_desc_input = ''
+        self._register_desc_scroll_x = 0
+        self._register_desc_scroll_dragging = False
+        self._register_desc_scroll_grab_x = 0
+        self._register_desc_scrollbar_rect = pygame.Rect(self._register_desc_rect.x + 10, self._register_desc_rect.bottom - 12, self._register_desc_rect.width - 20, 6)
+        self._register_desc_thumb_rect = pygame.Rect(self._register_desc_scrollbar_rect.x, self._register_desc_scrollbar_rect.y, 40, self._register_desc_scrollbar_rect.height)
         self._register_file_path = ''
         # Circular Instructions button placed to the right of Import AI
         instr_x = self._import_ai_button_rect.right + 16

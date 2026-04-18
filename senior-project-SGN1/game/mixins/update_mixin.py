@@ -195,6 +195,8 @@ class GameMainUpdateMixin:
                             self._import_popup_open = False
                             self._register_popup_open = True
                             self._register_active_field = None
+                            self._register_desc_scroll_x = 0
+                            self._register_desc_scroll_dragging = False
                             continue
                         if not self._import_modal_rect.collidepoint(event.pos):
                             self._import_popup_open = False
@@ -207,29 +209,74 @@ class GameMainUpdateMixin:
                         if event.key in (pygame.K_x, pygame.K_ESCAPE):
                             self._register_popup_open = False
                             self._register_active_field = None
+                            self._register_desc_scroll_dragging = False
                             continue
                         if self._register_active_field in ('name', 'description'):
                             target_attr = '_register_name_input' if self._register_active_field == 'name' else '_register_desc_input'
-                            max_len = 20 if self._register_active_field == 'name' else 50
+                            max_len = 20 if self._register_active_field == 'name' else 1000
                             current = getattr(self, target_attr)
                             if event.key == pygame.K_BACKSPACE:
                                 setattr(self, target_attr, current[:-1])
+                                if self._register_active_field == 'description':
+                                    desc_text = getattr(self, '_register_desc_input', '')
+                                    desc_width = self.font_register_desc.size(desc_text)[0]
+                                    visible_width = self._register_desc_rect.width - 20
+                                    self._register_desc_scroll_x = max(0, desc_width - visible_width)
+                                continue
+                            if self._register_active_field == 'description' and event.key in (pygame.K_LEFT, pygame.K_RIGHT, pygame.K_HOME, pygame.K_END):
+                                desc_text = getattr(self, '_register_desc_input', '')
+                                desc_width = self.font_register_desc.size(desc_text)[0]
+                                visible_width = self._register_desc_rect.width - 20
+                                max_scroll = max(0, desc_width - visible_width)
+                                if event.key == pygame.K_LEFT:
+                                    self._register_desc_scroll_x = max(0, self._register_desc_scroll_x - 40)
+                                elif event.key == pygame.K_RIGHT:
+                                    self._register_desc_scroll_x = min(max_scroll, self._register_desc_scroll_x + 40)
+                                elif event.key == pygame.K_HOME:
+                                    self._register_desc_scroll_x = 0
+                                elif event.key == pygame.K_END:
+                                    self._register_desc_scroll_x = max_scroll
                                 continue
                             if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_TAB):
                                 self._register_active_field = 'description' if self._register_active_field == 'name' else None
                                 continue
                             if event.unicode and event.unicode.isprintable() and len(current) < max_len:
                                 setattr(self, target_attr, current + event.unicode)
+                                if self._register_active_field == 'description':
+                                    desc_text = getattr(self, '_register_desc_input', '')
+                                    desc_width = self.font_register_desc.size(desc_text)[0]
+                                    visible_width = self._register_desc_rect.width - 20
+                                    self._register_desc_scroll_x = max(0, desc_width - visible_width)
                                 continue
 
                     if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                        if self._register_desc_thumb_rect.collidepoint(event.pos):
+                            self._register_desc_scroll_dragging = True
+                            self._register_desc_scroll_grab_x = event.pos[0] - self._register_desc_thumb_rect.x
+                            self._register_active_field = 'description'
+                            continue
+                        if self._register_desc_scrollbar_rect.collidepoint(event.pos):
+                            track = self._register_desc_scrollbar_rect
+                            thumb = self._register_desc_thumb_rect
+                            track_range = max(1, track.width - thumb.width)
+                            target_x = max(track.x, min(event.pos[0] - (thumb.width // 2), track.right - thumb.width))
+                            scroll_ratio = (target_x - track.x) / track_range
+                            desc_text = getattr(self, '_register_desc_input', '')
+                            desc_width = self.font_register_desc.size(desc_text)[0]
+                            visible_width = self._register_desc_rect.width - 20
+                            max_scroll = max(0, desc_width - visible_width)
+                            self._register_desc_scroll_x = int(scroll_ratio * max_scroll)
+                            self._register_active_field = 'description'
+                            continue
                         if self._register_close_rect.collidepoint(event.pos):
                             self._register_popup_open = False
                             self._register_active_field = None
+                            self._register_desc_scroll_dragging = False
                             continue
                         if not self._register_modal_rect.collidepoint(event.pos):
                             self._register_popup_open = False
                             self._register_active_field = None
+                            self._register_desc_scroll_dragging = False
                             continue
 
                         if self._register_name_rect.collidepoint(event.pos):
@@ -263,13 +310,36 @@ class GameMainUpdateMixin:
                                 self._register_active_field = None
                                 self._register_name_input = ''
                                 self._register_desc_input = ''
+                                self._register_desc_scroll_x = 0
+                                self._register_desc_scroll_dragging = False
                                 self._register_file_path = ''
                                 self._set_start_alert('AI imported successfully!', 3600)
                             except Exception as e:
                                 self._set_start_alert(str(e), 4600)
                             continue
-
-                        self._register_active_field = None
+                    if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                        self._register_desc_scroll_dragging = False
+                    if event.type == pygame.MOUSEMOTION and self._register_desc_scroll_dragging:
+                        track = self._register_desc_scrollbar_rect
+                        thumb = self._register_desc_thumb_rect
+                        track_range = max(1, track.width - thumb.width)
+                        thumb_left = max(track.x, min(event.pos[0] - self._register_desc_scroll_grab_x, track.right - thumb.width))
+                        scroll_ratio = (thumb_left - track.x) / track_range
+                        desc_text = getattr(self, '_register_desc_input', '')
+                        desc_width = self.font_register_desc.size(desc_text)[0]
+                        visible_width = self._register_desc_rect.width - 20
+                        max_scroll = max(0, desc_width - visible_width)
+                        self._register_desc_scroll_x = int(scroll_ratio * max_scroll)
+                        continue
+                    if event.type == pygame.MOUSEWHEEL and self._register_desc_rect.collidepoint(pygame.mouse.get_pos()):
+                        desc_text = getattr(self, '_register_desc_input', '')
+                        desc_width = self.font_register_desc.size(desc_text)[0]
+                        visible_width = self._register_desc_rect.width - 20
+                        max_scroll = max(0, desc_width - visible_width)
+                        wheel_step = 36
+                        wheel_delta = event.x if event.x != 0 else event.y
+                        self._register_desc_scroll_x = max(0, min(self._register_desc_scroll_x - (wheel_delta * wheel_step), max_scroll))
+                        continue
                     if event.type in (pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION, pygame.MOUSEWHEEL, pygame.KEYDOWN):
                         continue
 

@@ -764,7 +764,7 @@ class GameMainRenderMixin:
                 self.screen.blit(title, title.get_rect(midtop=(self._register_modal_rect.centerx, self._register_modal_rect.y + 18)))
 
                 name_label = self.font_s.render('AI Name (required, max 20)', False, (0, 0, 0))
-                desc_label = self.font_s.render('Description (optional, max 50)', False, (0, 0, 0))
+                desc_label = self.font_s.render('Description (optional, max 1000)', False, (0, 0, 0))
                 file_label = self.font_s.render('Upload File (required, .py only)', False, (0, 0, 0))
                 self.screen.blit(name_label, (self._register_name_rect.x, self._register_name_rect.y - 28))
                 self.screen.blit(desc_label, (self._register_desc_rect.x, self._register_desc_rect.y - 28))
@@ -778,9 +778,49 @@ class GameMainRenderMixin:
                 pygame.draw.rect(self.screen, (32, 32, 32), self._register_desc_rect, 2 if not desc_active else 3)
 
                 name_value = self.font_s.render(getattr(self, '_register_name_input', ''), False, (0, 0, 0))
-                desc_value = self.font_register_desc.render(getattr(self, '_register_desc_input', ''), False, (0, 0, 0))
                 self.screen.blit(name_value, (self._register_name_rect.x + 10, self._register_name_rect.y + 10))
-                self.screen.blit(desc_value, (self._register_desc_rect.x + 10, self._register_desc_rect.y + 10))
+                desc_input = getattr(self, '_register_desc_input', '')
+                desc_value = self.font_register_desc.render(desc_input, False, (0, 0, 0))
+                visible_width = self._register_desc_rect.width - 20
+                content_width = max(1, desc_value.get_width())
+                max_scroll = max(0, content_width - visible_width)
+                self._register_desc_scroll_x = max(0, min(getattr(self, '_register_desc_scroll_x', 0), max_scroll))
+
+                clip_rect = pygame.Rect(
+                    self._register_desc_rect.x + 8,
+                    self._register_desc_rect.y + 6,
+                    self._register_desc_rect.width - 16,
+                    self._register_desc_rect.height - 18,
+                )
+                previous_clip = self.screen.get_clip()
+                self.screen.set_clip(clip_rect)
+                self.screen.blit(
+                    desc_value,
+                    (
+                        self._register_desc_rect.x + 10 - self._register_desc_scroll_x,
+                        self._register_desc_rect.y + 10,
+                    ),
+                )
+                self.screen.set_clip(previous_clip)
+
+                self._register_desc_scrollbar_rect = pygame.Rect(
+                    self._register_desc_rect.x + 10,
+                    self._register_desc_rect.bottom - 12,
+                    self._register_desc_rect.width - 20,
+                    6,
+                )
+                pygame.draw.rect(self.screen, (210, 210, 210), self._register_desc_scrollbar_rect, border_radius=3)
+                thumb_width = self._register_desc_scrollbar_rect.width if max_scroll == 0 else max(40, int(self._register_desc_scrollbar_rect.width * (visible_width / max(content_width, 1))))
+                track_range = max(0, self._register_desc_scrollbar_rect.width - thumb_width)
+                thumb_x = self._register_desc_scrollbar_rect.x if max_scroll == 0 else self._register_desc_scrollbar_rect.x + int((self._register_desc_scroll_x / max_scroll) * track_range)
+                self._register_desc_thumb_rect = pygame.Rect(
+                    thumb_x,
+                    self._register_desc_scrollbar_rect.y,
+                    thumb_width,
+                    self._register_desc_scrollbar_rect.height,
+                )
+                thumb_color = (150, 150, 150) if getattr(self, '_register_desc_scroll_dragging', False) else (170, 170, 170)
+                pygame.draw.rect(self.screen, thumb_color, self._register_desc_thumb_rect, border_radius=3)
 
                 upload_hover = self._register_file_rect.collidepoint(pygame.mouse.get_pos())
                 pygame.draw.rect(self.screen, (220, 220, 220) if upload_hover else (236, 236, 236), self._register_file_rect, border_radius=5)

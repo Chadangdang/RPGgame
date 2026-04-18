@@ -157,8 +157,8 @@ def import_ai(ai_name: str, description: str, source_file: str) -> dict[str, Any
         raise ValueError('AI Name is required.')
     if len(ai_name) > 20:
         raise ValueError('AI Name must be 20 characters or fewer.')
-    if len(description) > 50:
-        raise ValueError('Description must be 50 characters or fewer.')
+    if len(description) > 1000:
+        raise ValueError('Description must be 1000 characters or fewer.')
     if not source_file:
         raise ValueError('Please choose a Python (.py) file to upload.')
 
