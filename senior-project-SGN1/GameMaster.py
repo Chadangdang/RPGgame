@@ -16,6 +16,11 @@ def get_ai_labels() -> list[str]:
     refresh_ai_pool()
     return ai_import_manager.get_ai_labels()
 
+
+def get_ai_metadata() -> list[dict]:
+    refresh_ai_pool()
+    return ai_import_manager.get_ai_metadata()
+
 class GameMaster:
     def __init__(self) -> None:
         self.turn = 1   # Team 1 starts first

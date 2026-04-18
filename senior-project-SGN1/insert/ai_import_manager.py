@@ -23,8 +23,11 @@ from AI import (
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 INSERT_DIR = ROOT_DIR / 'insert'
-REGISTRY_PATH = INSERT_DIR / 'ai_registry.json'
-TEMPLATE_PATH = INSERT_DIR / 'Ai_template.py'
+CUSTOM_AI_DIR = INSERT_DIR / 'custom-ai'
+REGISTRY_PATH = CUSTOM_AI_DIR / 'ai_registry.json'
+TEMPLATE_PATH = CUSTOM_AI_DIR / 'Ai_template.py'
+LEGACY_REGISTRY_PATH = INSERT_DIR / 'ai_registry.json'
+LEGACY_TEMPLATE_PATH = INSERT_DIR / 'Ai_template.py'
 
 BUILTIN_AI: list[tuple[str, type[AIFramework]]] = [
     ('Player Input', PlayerInput),
@@ -49,6 +52,9 @@ def _safe_module_name(stem: str) -> str:
 
 
 def _load_registry() -> list[dict[str, Any]]:
+    if not REGISTRY_PATH.exists() and LEGACY_REGISTRY_PATH.exists():
+        CUSTOM_AI_DIR.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(LEGACY_REGISTRY_PATH, REGISTRY_PATH)
     if not REGISTRY_PATH.exists():
         return []
     try:
@@ -61,6 +67,7 @@ def _load_registry() -> list[dict[str, Any]]:
 
 
 def _save_registry(entries: list[dict[str, Any]]) -> None:
+    CUSTOM_AI_DIR.mkdir(parents=True, exist_ok=True)
     REGISTRY_PATH.write_text(json.dumps(entries, ensure_ascii=False, indent=2), encoding='utf-8')
 
 
@@ -128,14 +135,15 @@ def _sanitize_dest_name(filename: str) -> str:
 
 
 def _ensure_unique_file(dest_name: str) -> Path:
-    dest_path = INSERT_DIR / dest_name
+    CUSTOM_AI_DIR.mkdir(parents=True, exist_ok=True)
+    dest_path = CUSTOM_AI_DIR / dest_name
     if not dest_path.exists():
         return dest_path
     stem = Path(dest_name).stem
     suffix = Path(dest_name).suffix
     counter = 1
     while True:
-        candidate = INSERT_DIR / f'{stem}_{counter}{suffix}'
+        candidate = CUSTOM_AI_DIR / f'{stem}_{counter}{suffix}'
         if not candidate.exists():
             return candidate
         counter += 1
@@ -168,6 +176,7 @@ def import_ai(ai_name: str, description: str, source_file: str) -> dict[str, Any
         raise ValueError('AI Name already exists. Please choose a different name.')
 
     INSERT_DIR.mkdir(parents=True, exist_ok=True)
+    CUSTOM_AI_DIR.mkdir(parents=True, exist_ok=True)
     saved_file_path = _ensure_unique_file(_sanitize_dest_name(source_path.name))
     shutil.copyfile(source_path, saved_file_path)
 
@@ -256,7 +265,14 @@ def get_ai_labels() -> list[str]:
     return list(AI_LABELS)
 
 
+def get_ai_metadata() -> list[dict[str, Any]]:
+    return [dict(item) for item in AI_METADATA]
+
+
 def download_template() -> Path:
+    if not TEMPLATE_PATH.exists() and LEGACY_TEMPLATE_PATH.exists():
+        CUSTOM_AI_DIR.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(LEGACY_TEMPLATE_PATH, TEMPLATE_PATH)
     if not TEMPLATE_PATH.exists():
         raise ValueError('AI template file is missing.')
 

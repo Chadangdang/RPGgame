@@ -216,6 +216,7 @@ class GameMainInitMixin:
         self.font_end_title = pygame.font.Font('resource/font.ttf', 74)
         self.font_end_button = pygame.font.Font('resource/font.ttf', 24)
         self.font_menu_label = pygame.font.Font('resource/font.ttf', 26)
+        self.font_register_desc = pygame.font.Font('resource/font.ttf', 18)
         self._instr_text_font = pygame.font.Font('resource/font.ttf', 20)
 
         # --- Map selection UI geometry/state ---
@@ -314,7 +315,7 @@ class GameMainInitMixin:
             '   in the folder named "RPG Simulation Export".',
         ]
         # AI description page (brief descriptions for available AI types)
-        self._instr_ai_lines = [
+        self._instr_ai_lines_base = [
             'AI DESCRIPTION',
             '',
             'Player Input: Human control via mouse/keyboard.',
@@ -339,6 +340,7 @@ class GameMainInitMixin:
             '',
             'Disable AI: Turns off AI control for a slot.',
         ]
+        self._refresh_ai_description_lines()
         self._instr_scroll_by_page = {'game': 0, 'import': 0, 'ai': 0}
         self._instr_scroll_step = 28
 
@@ -499,6 +501,18 @@ class GameMainInitMixin:
         self.p1_sel_cursor = SelectMenuCursor(self.screen, (420, 60), (ai_choice_count, 1))
         self.p2_sel_cursor = SelectMenuCursor(self.screen, (420, 60), (ai_choice_count, 1))
         self._ai_type_labels = labels
+        self._refresh_ai_description_lines()
+
+    def _refresh_ai_description_lines(self) -> None:
+        lines = list(getattr(self, '_instr_ai_lines_base', []))
+        custom_entries = [item for item in GM.get_ai_metadata() if item.get('name')]
+        if custom_entries:
+            lines.extend(['', 'TAP on first line'])
+            for item in custom_entries:
+                name = str(item.get('name', '')).strip()
+                desc = str(item.get('description', '')).strip() or 'No description provided.'
+                lines.append(f'{name} (custom AI): {desc}')
+        self._instr_ai_lines = lines
 
     def _install_mouse_patch(self) -> None:
         """Patch pygame.mouse.get_pos to return base-space coords (divide by scale)."""

@@ -778,7 +778,7 @@ class GameMainRenderMixin:
                 pygame.draw.rect(self.screen, (32, 32, 32), self._register_desc_rect, 2 if not desc_active else 3)
 
                 name_value = self.font_s.render(getattr(self, '_register_name_input', ''), False, (0, 0, 0))
-                desc_value = self.font_ss.render(getattr(self, '_register_desc_input', ''), False, (0, 0, 0))
+                desc_value = self.font_register_desc.render(getattr(self, '_register_desc_input', ''), False, (0, 0, 0))
                 self.screen.blit(name_value, (self._register_name_rect.x + 10, self._register_name_rect.y + 10))
                 self.screen.blit(desc_value, (self._register_desc_rect.x + 10, self._register_desc_rect.y + 10))
 
