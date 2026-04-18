@@ -254,6 +254,19 @@ class GameMainInitMixin:
         self._register_desc_scrollbar_rect = pygame.Rect(self._register_desc_rect.right - 12, self._register_desc_rect.y + 10, 6, self._register_desc_rect.height - 20)
         self._register_desc_thumb_rect = pygame.Rect(self._register_desc_scrollbar_rect.x, self._register_desc_scrollbar_rect.y, self._register_desc_scrollbar_rect.width, 40)
         self._register_file_path = ''
+        self._register_mode = 'create'  # create | edit
+        self._register_edit_original_name = ''
+        self._custom_ai_menu_open = False
+        self._custom_ai_menu_target_name = ''
+        self._custom_ai_menu_rect = pygame.Rect(0, 0, 250, 154)
+        self._custom_ai_menu_edit_rect = pygame.Rect(0, 0, 210, 46)
+        self._custom_ai_menu_delete_rect = pygame.Rect(0, 0, 210, 46)
+        self._custom_ai_delete_popup_open = False
+        self._custom_ai_delete_target_name = ''
+        self._custom_ai_delete_modal_rect = pygame.Rect((WIDTH - 600) // 2, (HEIGHT - 280) // 2, 600, 280)
+        self._custom_ai_delete_cancel_rect = pygame.Rect(self._custom_ai_delete_modal_rect.x + 118, self._custom_ai_delete_modal_rect.bottom - 84, 160, 48)
+        self._custom_ai_delete_confirm_rect = pygame.Rect(self._custom_ai_delete_modal_rect.right - 278, self._custom_ai_delete_modal_rect.bottom - 84, 160, 48)
+        self._custom_ai_dot_buttons: list[tuple[str, pygame.Rect]] = []
         # Circular Instructions button placed to the right of Import AI
         instr_x = self._import_ai_button_rect.right + 16
         instr_y = self._import_ai_button_rect.y
@@ -518,6 +531,22 @@ class GameMainInitMixin:
                 desc = str(item.get('description', '')).strip() or 'No description provided.'
                 lines.append(f'{name} (custom AI): {desc}')
         self._instr_ai_lines = lines
+
+    def _custom_ai_map_by_name(self) -> dict[str, dict]:
+        return {str(item.get('name', '')).strip(): item for item in GM.get_ai_metadata() if str(item.get('name', '')).strip()}
+
+    def _is_custom_ai_index(self, idx: int) -> bool:
+        return idx >= len(AI_SELECTION_LABELS()) - len(GM.get_ai_metadata())
+
+    def _reset_register_form(self) -> None:
+        self._register_active_field = None
+        self._register_name_input = ''
+        self._register_desc_input = ''
+        self._register_desc_scroll_y = 0
+        self._register_desc_scroll_dragging = False
+        self._register_file_path = ''
+        self._register_mode = 'create'
+        self._register_edit_original_name = ''
 
     def _install_mouse_patch(self) -> None:
         """Patch pygame.mouse.get_pos to return base-space coords (divide by scale)."""

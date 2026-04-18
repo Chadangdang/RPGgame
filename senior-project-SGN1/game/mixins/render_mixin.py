@@ -294,20 +294,37 @@ class GameMainRenderMixin:
             self.screen.blit(p1_title, p1_title.get_rect(center=p1_banner.center))
             self.screen.blit(p2_title, p2_title.get_rect(center=p2_banner.center))
 
-            model_names = [_format_ai_selection_label(name) for name in AI_SELECTION_LABELS()]
+            ai_labels = AI_SELECTION_LABELS()
+            model_names = [_format_ai_selection_label(name) for name in ai_labels]
+            custom_map = {str(item.get('name', '')).strip(): item for item in GM.get_ai_metadata() if str(item.get('name', '')).strip()}
+            self._custom_ai_dot_buttons = []
 
             def draw_column(is_left: bool) -> None:
                 mouse_pos = pygame.mouse.get_pos()
                 highlight_color = (255, 255, 94)
 
                 for idx, rect in self._model_row_rects(is_left):
+                    model_label = ai_labels[idx]
+                    is_custom_ai = model_label in custom_map
                     hovered = rect.collidepoint(mouse_pos)
                     pygame.draw.rect(self.screen, (255, 255, 255) if not hovered else (245, 245, 245), rect)
                     pygame.draw.rect(self.screen, BLACK, rect, 2)
 
                     text_font = self.font_model_select_sub if self._model_is_personality_subrow(idx) else self.font_model_select
                     lbl_surface = text_font.render(model_names[idx], False, (0, 0, 0))
-                    self.screen.blit(lbl_surface, lbl_surface.get_rect(center=rect.center))
+                    label_center = rect.center
+                    if is_custom_ai:
+                        label_center = (rect.centerx - 18, rect.centery)
+                    self.screen.blit(lbl_surface, lbl_surface.get_rect(center=label_center))
+
+                    if is_custom_ai:
+                        dot_rect = pygame.Rect(rect.right + 14, rect.y + (rect.height - 34) // 2, 34, 34)
+                        dot_hovered = dot_rect.collidepoint(mouse_pos)
+                        pygame.draw.rect(self.screen, (248, 248, 248) if not dot_hovered else (235, 235, 235), dot_rect, border_radius=8)
+                        pygame.draw.rect(self.screen, (0, 0, 0), dot_rect, 2, border_radius=8)
+                        dots_text = self.font_s.render('⋯', False, (0, 0, 0))
+                        self.screen.blit(dots_text, dots_text.get_rect(center=(dot_rect.centerx, dot_rect.centery - 1)))
+                        self._custom_ai_dot_buttons.append((model_label, dot_rect))
 
                     # Selection highlight (neon yellow inspired by map popup)
                     sel_cursor = self.p1_sel_cursor if is_left else self.p2_sel_cursor
@@ -760,12 +777,15 @@ class GameMainRenderMixin:
                 close_text = self.font_s.render('X', False, (0, 0, 0))
                 self.screen.blit(close_text, close_text.get_rect(center=self._register_close_rect.center))
 
-                title = self.font_m.render('Register Custom AI', False, (0, 0, 0))
+                is_edit_mode = getattr(self, '_register_mode', 'create') == 'edit'
+                title_label = 'Edit Custom AI' if is_edit_mode else 'Register Custom AI'
+                title = self.font_m.render(title_label, False, (0, 0, 0))
                 self.screen.blit(title, title.get_rect(midtop=(self._register_modal_rect.centerx, self._register_modal_rect.y + 18)))
 
                 name_label = self.font_s.render('AI Name (required, max 20)', False, (0, 0, 0))
                 desc_label = self.font_s.render('Description (optional, max 1000)', False, (0, 0, 0))
-                file_label = self.font_s.render('Upload File (required, .py only)', False, (0, 0, 0))
+                file_prompt = 'Upload File (optional replacement, .py only)' if is_edit_mode else 'Upload File (required, .py only)'
+                file_label = self.font_s.render(file_prompt, False, (0, 0, 0))
                 self.screen.blit(name_label, (self._register_name_rect.x, self._register_name_rect.y - 28))
                 self.screen.blit(desc_label, (self._register_desc_rect.x, self._register_desc_rect.y - 28))
                 self.screen.blit(file_label, (self._register_file_rect.x, self._register_file_rect.y - 28))
@@ -859,8 +879,64 @@ class GameMainRenderMixin:
                 submit_hover = self._register_submit_rect.collidepoint(pygame.mouse.get_pos())
                 pygame.draw.rect(self.screen, (202, 242, 184) if submit_hover else (214, 250, 196), self._register_submit_rect, border_radius=6)
                 pygame.draw.rect(self.screen, (0, 0, 0), self._register_submit_rect, 2, border_radius=6)
-                submit_text = self.font_s.render('Submit', False, (0, 0, 0))
+                submit_label = 'Save' if getattr(self, '_register_mode', 'create') == 'edit' else 'Submit'
+                submit_text = self.font_s.render(submit_label, False, (0, 0, 0))
                 self.screen.blit(submit_text, submit_text.get_rect(center=self._register_submit_rect.center))
+
+            if getattr(self, '_custom_ai_menu_open', False):
+                menu_rect = self._custom_ai_menu_rect
+                pygame.draw.rect(self.screen, (247, 242, 234), menu_rect, border_radius=8)
+                pygame.draw.rect(self.screen, (0, 0, 0), menu_rect, 2, border_radius=8)
+
+                title = self.font_s.render('Edit Custom AI', False, (0, 0, 0))
+                self.screen.blit(title, title.get_rect(midtop=(menu_rect.centerx, menu_rect.y + 14)))
+
+                edit_rect = self._custom_ai_menu_edit_rect
+                delete_rect = self._custom_ai_menu_delete_rect
+                mouse_pos = pygame.mouse.get_pos()
+
+                edit_hovered = edit_rect.collidepoint(mouse_pos)
+                pygame.draw.rect(self.screen, (238, 244, 255) if edit_hovered else (248, 250, 255), edit_rect, border_radius=6)
+                pygame.draw.rect(self.screen, (0, 0, 0), edit_rect, 2, border_radius=6)
+                edit_text = self.font_s.render('Edit', False, (0, 0, 0))
+                self.screen.blit(edit_text, edit_text.get_rect(center=edit_rect.center))
+
+                delete_hovered = delete_rect.collidepoint(mouse_pos)
+                pygame.draw.rect(self.screen, (255, 238, 238) if delete_hovered else (255, 246, 246), delete_rect, border_radius=6)
+                pygame.draw.rect(self.screen, (0, 0, 0), delete_rect, 2, border_radius=6)
+                delete_text = self.font_s.render('Delete', False, (120, 0, 0))
+                self.screen.blit(delete_text, delete_text.get_rect(center=delete_rect.center))
+
+            if getattr(self, '_custom_ai_delete_popup_open', False):
+                modal = self._custom_ai_delete_modal_rect
+                overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+                overlay.fill((0, 0, 0, 120))
+                self.screen.blit(overlay, (0, 0))
+
+                pygame.draw.rect(self.screen, (247, 242, 234), modal, border_radius=8)
+                pygame.draw.rect(self.screen, (0, 0, 0), modal, 3, border_radius=8)
+
+                ai_name = getattr(self, '_custom_ai_delete_target_name', '')
+                line1 = self.font_sm.render('Are you sure you want to delete', False, (0, 0, 0))
+                line2 = self.font_s.render(f'custom ai: {ai_name} ?', False, (0, 0, 0))
+                self.screen.blit(line1, line1.get_rect(center=(modal.centerx, modal.y + 98)))
+                self.screen.blit(line2, line2.get_rect(center=(modal.centerx, modal.y + 142)))
+
+                cancel_rect = self._custom_ai_delete_cancel_rect
+                delete_rect = self._custom_ai_delete_confirm_rect
+                mouse_pos = pygame.mouse.get_pos()
+                cancel_hovered = cancel_rect.collidepoint(mouse_pos)
+                delete_hovered = delete_rect.collidepoint(mouse_pos)
+
+                pygame.draw.rect(self.screen, (232, 232, 232) if cancel_hovered else (240, 240, 240), cancel_rect, border_radius=6)
+                pygame.draw.rect(self.screen, (0, 0, 0), cancel_rect, 2, border_radius=6)
+                cancel_text = self.font_s.render('Cancel', False, (0, 0, 0))
+                self.screen.blit(cancel_text, cancel_text.get_rect(center=cancel_rect.center))
+
+                pygame.draw.rect(self.screen, (255, 214, 214) if delete_hovered else (255, 224, 224), delete_rect, border_radius=6)
+                pygame.draw.rect(self.screen, (0, 0, 0), delete_rect, 2, border_radius=6)
+                confirm_text = self.font_s.render('Delete', False, (120, 0, 0))
+                self.screen.blit(confirm_text, confirm_text.get_rect(center=delete_rect.center))
 
             # Draw the map 'SELECT' box only when the map popup is active
             if getattr(self, '_map_popup_open', False) and not getattr(self, '_instr_popup_open', False):

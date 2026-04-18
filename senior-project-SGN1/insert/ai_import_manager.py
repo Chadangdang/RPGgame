@@ -196,6 +196,97 @@ def import_ai(ai_name: str, description: str, source_file: str) -> dict[str, Any
     return entry
 
 
+def update_ai(old_name: str, new_name: str, description: str, source_file: str = '') -> dict[str, Any]:
+    old_name = (old_name or '').strip()
+    new_name = (new_name or '').strip()
+    description = (description or '').strip()
+    source_file = (source_file or '').strip()
+
+    if not old_name:
+        raise ValueError('Original AI Name is required.')
+    if not new_name:
+        raise ValueError('AI Name is required.')
+    if len(new_name) > 20:
+        raise ValueError('AI Name must be 20 characters or fewer.')
+    if len(description) > 1000:
+        raise ValueError('Description must be 1000 characters or fewer.')
+
+    registry = _load_registry()
+    entry_index = next((i for i, item in enumerate(registry) if str(item.get('name', '')).strip().lower() == old_name.lower()), -1)
+    if entry_index < 0:
+        raise ValueError('Custom AI not found.')
+
+    if any(
+        i != entry_index and str(item.get('name', '')).strip().lower() == new_name.lower()
+        for i, item in enumerate(registry)
+    ):
+        raise ValueError('AI Name already exists. Please choose a different name.')
+
+    entry = dict(registry[entry_index])
+    current_file_path = str(entry.get('file_path', '')).strip()
+    current_class_name = str(entry.get('class_name', '')).strip()
+    if not current_file_path or not current_class_name:
+        raise ValueError('Custom AI record is invalid.')
+
+    abs_path = ROOT_DIR / current_file_path
+    if not abs_path.exists() or abs_path.suffix.lower() != '.py':
+        raise ValueError('Existing custom AI file is missing.')
+
+    updated_file_path = current_file_path
+    updated_class_name = current_class_name
+
+    if source_file:
+        source_path = Path(source_file)
+        if not source_path.exists() or not source_path.is_file():
+            raise ValueError('Selected file does not exist.')
+        if source_path.suffix.lower() != '.py':
+            raise ValueError('Only .py files are allowed.')
+
+        source_code = source_path.read_text(encoding='utf-8')
+        _validate_ai_source(source_code)
+
+        shutil.copyfile(source_path, abs_path)
+        module = _import_module_from_path(abs_path)
+        ai_class = _extract_ai_class(module)
+        updated_class_name = ai_class.__name__
+
+    updated_entry = {
+        'name': new_name,
+        'description': description,
+        'file_path': updated_file_path,
+        'class_name': updated_class_name,
+    }
+    registry[entry_index] = updated_entry
+    _save_registry(registry)
+    refresh_ai_registry()
+    return updated_entry
+
+
+def delete_ai(ai_name: str) -> None:
+    ai_name = (ai_name or '').strip()
+    if not ai_name:
+        raise ValueError('AI Name is required.')
+
+    registry = _load_registry()
+    entry_index = next((i for i, item in enumerate(registry) if str(item.get('name', '')).strip().lower() == ai_name.lower()), -1)
+    if entry_index < 0:
+        raise ValueError('Custom AI not found.')
+
+    entry = registry.pop(entry_index)
+    _save_registry(registry)
+
+    file_path = str(entry.get('file_path', '')).strip()
+    if file_path:
+        abs_path = ROOT_DIR / file_path
+        try:
+            if abs_path.exists() and abs_path.is_file():
+                abs_path.unlink()
+        except Exception:
+            pass
+
+    refresh_ai_registry()
+
+
 def refresh_ai_registry() -> None:
     global AI_LIST, AI_LABELS, AI_METADATA
 

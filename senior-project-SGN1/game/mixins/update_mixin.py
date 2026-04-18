@@ -194,12 +194,84 @@ class GameMainUpdateMixin:
                         if self._import_modal_upload_rect.collidepoint(event.pos):
                             self._import_popup_open = False
                             self._register_popup_open = True
-                            self._register_active_field = None
-                            self._register_desc_scroll_y = 0
-                            self._register_desc_scroll_dragging = False
+                            self._reset_register_form()
                             continue
                         if not self._import_modal_rect.collidepoint(event.pos):
                             self._import_popup_open = False
+                            continue
+                    if event.type in (pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION, pygame.MOUSEWHEEL, pygame.KEYDOWN):
+                        continue
+
+                if getattr(self, '_custom_ai_delete_popup_open', False):
+                    if event.type == pygame.KEYDOWN and event.key in (pygame.K_x, pygame.K_ESCAPE):
+                        self._custom_ai_delete_popup_open = False
+                        self._custom_ai_delete_target_name = ''
+                        continue
+                    if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                        if self._custom_ai_delete_cancel_rect.collidepoint(event.pos):
+                            self._custom_ai_delete_popup_open = False
+                            self._custom_ai_delete_target_name = ''
+                            continue
+                        if self._custom_ai_delete_confirm_rect.collidepoint(event.pos):
+                            target_name = getattr(self, '_custom_ai_delete_target_name', '')
+                            try:
+                                ai_import_manager.delete_ai(target_name)
+                                old_p1 = min(self.p1_sel_cursor.grid[0], len(AI_SELECTION_LABELS()) - 1)
+                                old_p2 = min(self.p2_sel_cursor.grid[0], len(AI_SELECTION_LABELS()) - 1)
+                                self._refresh_ai_selection_ui()
+                                max_idx = max(0, len(AI_SELECTION_LABELS()) - 1)
+                                old_p1 = min(old_p1, max_idx)
+                                old_p2 = min(old_p2, max_idx)
+                                self.p1_sel_cursor.moveTo((old_p1, 0))
+                                self.p2_sel_cursor.moveTo((old_p2, 1))
+                                self.p1_sel_cursor.show = True
+                                self.p2_sel_cursor.show = True
+                                self.menu_cursor.moveTo((old_p1, 0))
+                                self._set_start_alert(f'Custom AI "{target_name}" deleted.', 3600)
+                            except Exception as e:
+                                self._set_start_alert(str(e), 4600)
+                            self._custom_ai_delete_popup_open = False
+                            self._custom_ai_delete_target_name = ''
+                            continue
+                        if not self._custom_ai_delete_modal_rect.collidepoint(event.pos):
+                            self._custom_ai_delete_popup_open = False
+                            self._custom_ai_delete_target_name = ''
+                            continue
+                    if event.type in (pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION, pygame.MOUSEWHEEL, pygame.KEYDOWN):
+                        continue
+
+                if getattr(self, '_custom_ai_menu_open', False):
+                    if event.type == pygame.KEYDOWN and event.key in (pygame.K_x, pygame.K_ESCAPE):
+                        self._custom_ai_menu_open = False
+                        self._custom_ai_menu_target_name = ''
+                        continue
+                    if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                        target_name = getattr(self, '_custom_ai_menu_target_name', '')
+                        if self._custom_ai_menu_edit_rect.collidepoint(event.pos):
+                            entry_map = self._custom_ai_map_by_name()
+                            target = entry_map.get(target_name)
+                            if target:
+                                self._register_mode = 'edit'
+                                self._register_edit_original_name = target_name
+                                self._register_name_input = str(target.get('name', '')).strip()
+                                self._register_desc_input = str(target.get('description', '')).strip()
+                                self._register_desc_scroll_y = 0
+                                self._register_desc_scroll_dragging = False
+                                self._register_file_path = ''
+                                self._register_active_field = 'name'
+                                self._register_popup_open = True
+                            self._custom_ai_menu_open = False
+                            self._custom_ai_menu_target_name = ''
+                            continue
+                        if self._custom_ai_menu_delete_rect.collidepoint(event.pos):
+                            self._custom_ai_menu_open = False
+                            self._custom_ai_menu_target_name = ''
+                            self._custom_ai_delete_popup_open = True
+                            self._custom_ai_delete_target_name = target_name
+                            continue
+                        if not self._custom_ai_menu_rect.collidepoint(event.pos):
+                            self._custom_ai_menu_open = False
+                            self._custom_ai_menu_target_name = ''
                             continue
                     if event.type in (pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION, pygame.MOUSEWHEEL, pygame.KEYDOWN):
                         continue
@@ -208,8 +280,7 @@ class GameMainUpdateMixin:
                     if event.type == pygame.KEYDOWN:
                         if event.key in (pygame.K_x, pygame.K_ESCAPE):
                             self._register_popup_open = False
-                            self._register_active_field = None
-                            self._register_desc_scroll_dragging = False
+                            self._reset_register_form()
                             continue
                         if self._register_active_field in ('name', 'description'):
                             target_attr = '_register_name_input' if self._register_active_field == 'name' else '_register_desc_input'
@@ -271,13 +342,11 @@ class GameMainUpdateMixin:
                             continue
                         if self._register_close_rect.collidepoint(event.pos):
                             self._register_popup_open = False
-                            self._register_active_field = None
-                            self._register_desc_scroll_dragging = False
+                            self._reset_register_form()
                             continue
                         if not self._register_modal_rect.collidepoint(event.pos):
                             self._register_popup_open = False
-                            self._register_active_field = None
-                            self._register_desc_scroll_dragging = False
+                            self._reset_register_form()
                             continue
 
                         if self._register_name_rect.collidepoint(event.pos):
@@ -293,11 +362,21 @@ class GameMainUpdateMixin:
                             continue
                         if self._register_submit_rect.collidepoint(event.pos):
                             try:
-                                ai_import_manager.import_ai(
-                                    self._register_name_input,
-                                    self._register_desc_input,
-                                    self._register_file_path,
-                                )
+                                if getattr(self, '_register_mode', 'create') == 'edit':
+                                    ai_import_manager.update_ai(
+                                        self._register_edit_original_name,
+                                        self._register_name_input,
+                                        self._register_desc_input,
+                                        self._register_file_path,
+                                    )
+                                    success_message = 'Custom AI saved successfully!'
+                                else:
+                                    ai_import_manager.import_ai(
+                                        self._register_name_input,
+                                        self._register_desc_input,
+                                        self._register_file_path,
+                                    )
+                                    success_message = 'AI imported successfully!'
                                 old_p1 = min(self.p1_sel_cursor.grid[0], len(AI_SELECTION_LABELS()) - 1)
                                 old_p2 = min(self.p2_sel_cursor.grid[0], len(AI_SELECTION_LABELS()) - 1)
                                 self._refresh_ai_selection_ui()
@@ -308,13 +387,8 @@ class GameMainUpdateMixin:
                                 self.menu_cursor.moveTo((old_p1, 0))
 
                                 self._register_popup_open = False
-                                self._register_active_field = None
-                                self._register_name_input = ''
-                                self._register_desc_input = ''
-                                self._register_desc_scroll_y = 0
-                                self._register_desc_scroll_dragging = False
-                                self._register_file_path = ''
-                                self._set_start_alert('AI imported successfully!', 3600)
+                                self._reset_register_form()
+                                self._set_start_alert(success_message, 3600)
                             except Exception as e:
                                 self._set_start_alert(str(e), 4600)
                             continue
@@ -545,6 +619,21 @@ class GameMainUpdateMixin:
 
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     if event.button == 1:
+                        clicked_custom_menu = False
+                        for ai_name, dot_rect in getattr(self, '_custom_ai_dot_buttons', []):
+                            if dot_rect.collidepoint(event.pos):
+                                menu_w, menu_h = self._custom_ai_menu_rect.size
+                                menu_x = min(max(40, dot_rect.right + 10), WIDTH - menu_w - 40)
+                                menu_y = min(max(40, dot_rect.y - 8), HEIGHT - menu_h - 40)
+                                self._custom_ai_menu_rect = pygame.Rect(menu_x, menu_y, menu_w, menu_h)
+                                self._custom_ai_menu_edit_rect = pygame.Rect(menu_x + 20, menu_y + 54, menu_w - 40, 42)
+                                self._custom_ai_menu_delete_rect = pygame.Rect(menu_x + 20, menu_y + 104, menu_w - 40, 42)
+                                self._custom_ai_menu_target_name = ai_name
+                                self._custom_ai_menu_open = True
+                                clicked_custom_menu = True
+                                break
+                        if clicked_custom_menu:
+                            continue
                         if self._start_button_rect.collidepoint(event.pos) and self.p1_sel_cursor.show and self.p2_sel_cursor.show:
                             self._attempt_start_session()
                             continue
