@@ -267,6 +267,12 @@ class GameMainInitMixin:
         self._custom_ai_delete_cancel_rect = pygame.Rect(self._custom_ai_delete_modal_rect.x + 118, self._custom_ai_delete_modal_rect.bottom - 84, 160, 48)
         self._custom_ai_delete_confirm_rect = pygame.Rect(self._custom_ai_delete_modal_rect.right - 278, self._custom_ai_delete_modal_rect.bottom - 84, 160, 48)
         self._custom_ai_dot_buttons: list[tuple[str, pygame.Rect]] = []
+        self._custom_ai_menu_icon = None
+        try:
+            custom_ai_menu_icon_path = os.path.join('resource', 'element', 'edit-btn.png')
+            self._custom_ai_menu_icon = pygame.image.load(custom_ai_menu_icon_path).convert_alpha()
+        except (pygame.error, FileNotFoundError):
+            self._custom_ai_menu_icon = None
         # Circular Instructions button placed to the right of Import AI
         instr_x = self._import_ai_button_rect.right + 16
         instr_y = self._import_ai_button_rect.y

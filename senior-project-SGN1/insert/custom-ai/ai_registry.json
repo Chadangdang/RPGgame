@@ -1,1 +1,8 @@
-[]
+[
+  {
+    "name": "uuuuuuuuu",
+    "description": "edok",
+    "file_path": "insert/custom-ai/AI_template_1.py",
+    "class_name": "MyCustomAI"
+  }
+]

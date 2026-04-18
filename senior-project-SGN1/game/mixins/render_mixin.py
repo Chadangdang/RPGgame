@@ -322,8 +322,13 @@ class GameMainRenderMixin:
                         dot_hovered = dot_rect.collidepoint(mouse_pos)
                         pygame.draw.rect(self.screen, (248, 248, 248) if not dot_hovered else (235, 235, 235), dot_rect, border_radius=8)
                         pygame.draw.rect(self.screen, (0, 0, 0), dot_rect, 2, border_radius=8)
-                        dots_text = self.font_s.render('⋯', False, (0, 0, 0))
-                        self.screen.blit(dots_text, dots_text.get_rect(center=(dot_rect.centerx, dot_rect.centery - 1)))
+                        if self._custom_ai_menu_icon is not None:
+                            icon_size = max(18, dot_rect.width - 10)
+                            icon_surface = pygame.transform.smoothscale(self._custom_ai_menu_icon, (icon_size, icon_size))
+                            self.screen.blit(icon_surface, icon_surface.get_rect(center=dot_rect.center))
+                        else:
+                            dots_text = self.font_s.render('⋯', False, (0, 0, 0))
+                            self.screen.blit(dots_text, dots_text.get_rect(center=(dot_rect.centerx, dot_rect.centery - 1)))
                         self._custom_ai_dot_buttons.append((model_label, dot_rect))
 
                     # Selection highlight (neon yellow inspired by map popup)
