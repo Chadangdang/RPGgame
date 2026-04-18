@@ -507,7 +507,7 @@ class GameMainInitMixin:
         lines = list(getattr(self, '_instr_ai_lines_base', []))
         custom_entries = [item for item in GM.get_ai_metadata() if item.get('name')]
         if custom_entries:
-            lines.extend(['', 'TAP on first line'])
+            lines.extend(['', ''])
             for item in custom_entries:
                 name = str(item.get('name', '')).strip()
                 desc = str(item.get('description', '')).strip() or 'No description provided.'
