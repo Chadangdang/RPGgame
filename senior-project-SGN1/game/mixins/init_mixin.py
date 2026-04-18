@@ -239,20 +239,20 @@ class GameMainInitMixin:
         self._import_modal_upload_rect = pygame.Rect(import_btn_start_x + import_modal_btn_w + import_modal_btn_gap, import_btn_y, import_modal_btn_w, import_modal_btn_h)
 
         self._register_popup_open = False
-        self._register_modal_rect = pygame.Rect((WIDTH - 760) // 2, (HEIGHT - 520) // 2, 760, 520)
+        self._register_modal_rect = pygame.Rect((WIDTH - 760) // 2, (HEIGHT - 620) // 2, 760, 620)
         self._register_close_rect = pygame.Rect(self._register_modal_rect.right - 52, self._register_modal_rect.y + 16, 34, 34)
         self._register_name_rect = pygame.Rect(self._register_modal_rect.x + 48, self._register_modal_rect.y + 112, 664, 44)
-        self._register_desc_rect = pygame.Rect(self._register_modal_rect.x + 48, self._register_modal_rect.y + 208, 664, 84)
-        self._register_file_rect = pygame.Rect(self._register_modal_rect.x + 48, self._register_modal_rect.y + 328, 220, 48)
+        self._register_desc_rect = pygame.Rect(self._register_modal_rect.x + 48, self._register_modal_rect.y + 208, 664, 192)
+        self._register_file_rect = pygame.Rect(self._register_modal_rect.x + 48, self._register_modal_rect.y + 436, 220, 48)
         self._register_submit_rect = pygame.Rect(self._register_modal_rect.right - 248, self._register_modal_rect.bottom - 72, 200, 48)
         self._register_active_field: str | None = None
         self._register_name_input = ''
         self._register_desc_input = ''
-        self._register_desc_scroll_x = 0
+        self._register_desc_scroll_y = 0
         self._register_desc_scroll_dragging = False
-        self._register_desc_scroll_grab_x = 0
-        self._register_desc_scrollbar_rect = pygame.Rect(self._register_desc_rect.x + 10, self._register_desc_rect.bottom - 12, self._register_desc_rect.width - 20, 6)
-        self._register_desc_thumb_rect = pygame.Rect(self._register_desc_scrollbar_rect.x, self._register_desc_scrollbar_rect.y, 40, self._register_desc_scrollbar_rect.height)
+        self._register_desc_scroll_grab_y = 0
+        self._register_desc_scrollbar_rect = pygame.Rect(self._register_desc_rect.right - 12, self._register_desc_rect.y + 10, 6, self._register_desc_rect.height - 20)
+        self._register_desc_thumb_rect = pygame.Rect(self._register_desc_scrollbar_rect.x, self._register_desc_scrollbar_rect.y, self._register_desc_scrollbar_rect.width, 40)
         self._register_file_path = ''
         # Circular Instructions button placed to the right of Import AI
         instr_x = self._import_ai_button_rect.right + 16
