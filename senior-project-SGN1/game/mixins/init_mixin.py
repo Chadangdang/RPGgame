@@ -535,6 +535,7 @@ class GameMainInitMixin:
             for item in custom_entries:
                 name = str(item.get('name', '')).strip()
                 desc = str(item.get('description', '')).strip() or 'No description provided.'
+                lines.append('')
                 lines.append(f'{name} (custom AI): {desc}')
         self._instr_ai_lines = lines
 

@@ -705,7 +705,21 @@ class GameMainRenderMixin:
                         else:
                             if cur.strip():
                                 wrapped_lines.append(cur)
-                            cur = indent + w
+                            # Handle very long tokens (no spaces) by splitting them
+                            # across multiple lines so text never overflows popup width.
+                            if chosen_font.size(indent + w)[0] <= max_w:
+                                cur = indent + w
+                            else:
+                                segment = indent
+                                for ch in w:
+                                    candidate = segment + ch
+                                    if chosen_font.size(candidate)[0] <= max_w:
+                                        segment = candidate
+                                    else:
+                                        if segment.strip():
+                                            wrapped_lines.append(segment)
+                                        segment = indent + ch
+                                cur = segment
                     if cur.strip():
                         wrapped_lines.append(cur)
 
