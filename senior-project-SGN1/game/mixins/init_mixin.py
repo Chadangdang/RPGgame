@@ -226,10 +226,16 @@ class GameMainInitMixin:
         self._import_ai_button_rect = pygame.Rect(40, 903, 220, 48)
         self._import_ai_button_hovered = False
         self._import_popup_open = False
-        self._import_modal_rect = pygame.Rect((WIDTH - 620) // 2, (HEIGHT - 320) // 2, 620, 320)
+        self._import_modal_rect = pygame.Rect((WIDTH - 760) // 2, (HEIGHT - 340) // 2, 760, 340)
         self._import_modal_close_rect = pygame.Rect(self._import_modal_rect.right - 52, self._import_modal_rect.y + 16, 34, 34)
-        self._import_modal_download_rect = pygame.Rect(self._import_modal_rect.x + 60, self._import_modal_rect.y + 180, 230, 54)
-        self._import_modal_upload_rect = pygame.Rect(self._import_modal_rect.right - 290, self._import_modal_rect.y + 180, 230, 54)
+        import_modal_btn_w = 300
+        import_modal_btn_h = 54
+        import_modal_btn_gap = 40
+        import_btn_total_w = import_modal_btn_w * 2 + import_modal_btn_gap
+        import_btn_start_x = self._import_modal_rect.x + (self._import_modal_rect.width - import_btn_total_w) // 2
+        import_btn_y = self._import_modal_rect.y + 198
+        self._import_modal_download_rect = pygame.Rect(import_btn_start_x, import_btn_y, import_modal_btn_w, import_modal_btn_h)
+        self._import_modal_upload_rect = pygame.Rect(import_btn_start_x + import_modal_btn_w + import_modal_btn_gap, import_btn_y, import_modal_btn_w, import_modal_btn_h)
 
         self._register_popup_open = False
         self._register_modal_rect = pygame.Rect((WIDTH - 760) // 2, (HEIGHT - 520) // 2, 760, 520)
