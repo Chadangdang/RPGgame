@@ -19,6 +19,16 @@ def AI_SELECTION_LABELS() -> list[str]:
     return GM.get_ai_labels()
 
 
+def _format_ai_selection_label(label: str) -> str:
+    """Shorten personality-core variant names for AI select screen display only."""
+    mapping = {
+        'Aggressive Personality Cores AI': 'Aggressive',
+        'Strategic Personality Cores AI': 'Strategic',
+        'Survival Personality Cores AI': 'Survival',
+    }
+    return mapping.get(label, label)
+
+
 
 # === Board placement (top-left of the 640x640 grid) ===
 # Lower this to move the whole board (and its A-H / 1-8 labels) higher on screen.
@@ -284,7 +294,7 @@ class GameMainRenderMixin:
             self.screen.blit(p1_title, p1_title.get_rect(center=p1_banner.center))
             self.screen.blit(p2_title, p2_title.get_rect(center=p2_banner.center))
 
-            model_names = AI_SELECTION_LABELS()
+            model_names = [_format_ai_selection_label(name) for name in AI_SELECTION_LABELS()]
 
             def draw_column(is_left: bool) -> None:
                 mouse_pos = pygame.mouse.get_pos()
