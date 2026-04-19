@@ -165,8 +165,13 @@ class GameMainExportMixin:
             summary_value_fill = PatternFill(fill_type=None)
 
             # Ensure logs are exported oldest -> newest (top -> down in sheets).
-            # `self.game_log` stores newest first (insert(0,...)), so reverse it here.
-            ordered_logs = [entry for entry in reversed(self.game_log) if isinstance(entry, dict)]
+            # `_game_log_archive` stores every entry in chronological order (no cap).
+            archive = getattr(self, '_game_log_archive', None)
+            if archive:
+                ordered_logs = [entry for entry in archive if isinstance(entry, dict)]
+            else:
+                # Fallback: use the capped UI log (reversed to chronological)
+                ordered_logs = [entry for entry in reversed(self.game_log) if isinstance(entry, dict)]
             if not ordered_logs:
                 print("No structured game log data to export.")
                 return

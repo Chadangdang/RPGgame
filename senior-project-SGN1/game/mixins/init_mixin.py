@@ -477,6 +477,8 @@ class GameMainInitMixin:
         # --- Game Log store ---
         # store structured dict entries for reliable export + UI rendering metadata
         self.game_log: list[dict] = []
+        # uncapped archive of every log entry (chronological) for export
+        self._game_log_archive: list[dict] = []
         # used to mirror newly-added lines from activeAI.action_log
         self._ai_log_len: dict[object, int] = {}
         self._ai_pending_lines: dict[int, list[str]] = {}

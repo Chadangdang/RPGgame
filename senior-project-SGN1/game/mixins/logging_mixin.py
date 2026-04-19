@@ -194,8 +194,11 @@ class GameMainLoggingMixin:
         entry = self._log_default_entry(text=text, color=color, time_elapsed=float(time_elapsed or 0.0))
         entry.update(fields)
         self.game_log.insert(0, entry)
-        if len(self.game_log) > 500:  # prevent unbounded growth
-            self.game_log.pop()
+        # Keep full history for export (chronological order)
+        if hasattr(self, '_game_log_archive'):
+            self._game_log_archive.append(entry)
+        # Invalidate wrapped-lines cache so it rebuilds on next render
+        self._wrapped_log_cache = None
 
         # Keep auto-follow on the newest line only when the user was already pinned there.
         if pinned_to_top:
@@ -772,7 +775,10 @@ class GameMainLoggingMixin:
         return lines or [""]
 
     def _wrap_game_log_lines(self, max_width: int) -> list[tuple[str, tuple[int, int, int], int | None]]:
-        """Expand game_log entries into individually wrapped display lines."""
+        """Expand game_log entries into individually wrapped display lines (cached)."""
+        cache = getattr(self, '_wrapped_log_cache', None)
+        if cache is not None and cache[0] == max_width and cache[1] == len(self.game_log):
+            return cache[2]
         wrapped: list[tuple[str, tuple[int, int, int], int | None]] = []
         for entry in self.game_log:
             text = entry.get("log", "") if isinstance(entry, dict) else str(entry)
@@ -782,6 +788,7 @@ class GameMainLoggingMixin:
                 wrapped.append((line, color, timestamp))
 
         # Keep list order as-is so index 0 (newest) renders at the top.
+        self._wrapped_log_cache = (max_width, len(self.game_log), wrapped)
         return wrapped
 
     def _calc_log_geometry(self, total_log_lines: int | None = None):

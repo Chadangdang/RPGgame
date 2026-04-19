@@ -154,6 +154,8 @@ class GameMainFlowUiMixin:
 
         self.game_state = 'selecting start area'
         self.game_log.clear()
+        if hasattr(self, '_game_log_archive'):
+            self._game_log_archive.clear()
         self._ai_log_len = {}
         self._ai_pending_lines.clear()
         self._pending_ko_sources = {}
@@ -186,6 +188,8 @@ class GameMainFlowUiMixin:
         self._reset_endgame_hover_states()
         self.pass_turn_button_hovered = False
         self.game_log.clear()
+        if hasattr(self, '_game_log_archive'):
+            self._game_log_archive.clear()
         self._ai_log_len = {}
         self._ai_pending_lines.clear()
         self._pending_ko_sources = {}
