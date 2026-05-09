@@ -1209,8 +1209,8 @@ class GameMainRenderMixin:
 
             # ----------------- Game Log Panel (with SCROLLBAR) -----------------
             log_content_width = self._log_content_width()
-            wrapped_log_lines = self._wrap_game_log_lines(log_content_width)
-            geom = self._calc_log_geometry(total_log_lines=len(wrapped_log_lines))
+            total_log_lines = self._get_total_wrapped_line_count(log_content_width)
+            geom = self._calc_log_geometry(total_log_lines=total_log_lines)
 
             # panel fill + border
             pygame.draw.rect(self.screen, UI_PANEL, geom["log_rect"])
@@ -1235,11 +1235,10 @@ class GameMainRenderMixin:
             if self.log_scroll < 0:
                 self.log_scroll = 0
 
-            total_lines = len(wrapped_log_lines)
             start = max(0, self.log_scroll)
-            end = min(total_lines, start + max_lines)
+            visible_log_lines, _ = self._get_log_window_lines(log_content_width, start, max_lines)
 
-            for log_tuple in wrapped_log_lines[start:end]:
+            for log_tuple in visible_log_lines:
                 text, color, _ = log_tuple
                 img = self.font_s.render(text, False, color)
                 self.screen.blit(img, (x, y))

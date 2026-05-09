@@ -193,12 +193,23 @@ class GameMainLoggingMixin:
         pinned_to_top = getattr(self, "log_scroll", 0) == 0
         entry = self._log_default_entry(text=text, color=color, time_elapsed=float(time_elapsed or 0.0))
         entry.update(fields)
-        self.game_log.insert(0, entry)
+        self._ensure_log_entry_id(entry)
+        if hasattr(self.game_log, "appendleft"):
+            self.game_log.appendleft(entry)
+        else:
+            self.game_log.insert(0, entry)
         # Keep full history for export (chronological order)
         if hasattr(self, '_game_log_archive'):
             self._game_log_archive.append(entry)
-        # Invalidate wrapped-lines cache so it rebuilds on next render
-        self._wrapped_log_cache = None
+        self._log_mutation_version = int(getattr(self, "_log_mutation_version", 0) or 0) + 1
+
+        # Cache wrapping for the new entry immediately to avoid full-history rebuilds.
+        current_width = self._log_content_width()
+        self._prepare_wrap_cache_width(current_width)
+        wrapped_lines = self._get_wrapped_lines_for_entry(entry, current_width)
+        if self._wrapped_total_lines is not None:
+            self._wrapped_total_lines += len(wrapped_lines)
+        self._log_window_cache = None
 
         # Keep auto-follow on the newest line only when the user was already pinned there.
         if pinned_to_top:
@@ -409,7 +420,10 @@ class GameMainLoggingMixin:
                 p1=kwargs.get("p1_rounds", 0),
                 p2=kwargs.get("p2_rounds", 0)
             ))
-            event_fields.update({"action_type": "summary_result"})
+            event_fields.update({
+                "action_type": "summary_result",
+                "winner": kwargs.get("winner", ""),
+            })
         elif event == "summary":
             tag = "SUMMARY"
             message = kwargs.get("message", "")
@@ -733,6 +747,118 @@ class GameMainLoggingMixin:
         # Small padding before the scrollbar
         return max(0, track_x - content_x - 4)
 
+    def _reset_log_runtime_caches(self) -> None:
+        self._wrapped_log_cache = None
+        self._entry_wrap_cache_width = None
+        self._entry_wrap_cache = {}
+        self._entry_wrap_counts = {}
+        self._wrapped_total_lines = 0
+        self._log_window_cache = None
+        self._log_mutation_version = int(getattr(self, "_log_mutation_version", 0) or 0) + 1
+
+    def _ensure_log_entry_id(self, entry: dict) -> int:
+        existing = entry.get("_entry_id") if isinstance(entry, dict) else None
+        if isinstance(existing, int) and existing > 0:
+            return existing
+        seq = int(getattr(self, "_log_entry_seq", 0) or 0) + 1
+        self._log_entry_seq = seq
+        if isinstance(entry, dict):
+            entry["_entry_id"] = seq
+        return seq
+
+    def _prepare_wrap_cache_width(self, max_width: int) -> None:
+        cache_width = getattr(self, "_entry_wrap_cache_width", None)
+        if cache_width == max_width:
+            return
+        self._entry_wrap_cache_width = max_width
+        self._entry_wrap_cache = {}
+        self._entry_wrap_counts = {}
+        self._wrapped_total_lines = None
+        self._log_window_cache = None
+
+    def _get_wrapped_lines_for_entry(self, entry, max_width: int) -> list[str]:
+        self._prepare_wrap_cache_width(max_width)
+        if not isinstance(entry, dict):
+            return self._wrap_text_to_width(str(entry), max_width)
+
+        entry_id = self._ensure_log_entry_id(entry)
+        cache = getattr(self, "_entry_wrap_cache", {})
+        cached = cache.get(entry_id)
+        if cached is not None:
+            return cached
+
+        wrapped = self._wrap_text_to_width(str(entry.get("log", "")), max_width)
+        cache[entry_id] = wrapped
+        self._entry_wrap_counts[entry_id] = len(wrapped)
+        return wrapped
+
+    def _get_total_wrapped_line_count(self, max_width: int) -> int:
+        self._prepare_wrap_cache_width(max_width)
+        total_cached = getattr(self, "_wrapped_total_lines", None)
+        if total_cached is not None and len(self._entry_wrap_counts) == len(self.game_log):
+            return max(0, int(total_cached))
+
+        total = 0
+        live_ids: set[int] = set()
+        for entry in self.game_log:
+            wrapped = self._get_wrapped_lines_for_entry(entry, max_width)
+            total += len(wrapped)
+            if isinstance(entry, dict):
+                live_ids.add(int(entry.get("_entry_id", 0) or 0))
+
+        # Prune stale cache entries after clear/reset transitions.
+        for entry_id in list(self._entry_wrap_cache.keys()):
+            if entry_id not in live_ids:
+                self._entry_wrap_cache.pop(entry_id, None)
+                self._entry_wrap_counts.pop(entry_id, None)
+
+        self._wrapped_total_lines = total
+        return total
+
+    def _get_log_window_lines(self, max_width: int, start: int, max_lines: int) -> tuple[list[tuple[str, tuple[int, int, int], int | None]], int]:
+        start = max(0, int(start))
+        max_lines = max(0, int(max_lines))
+        version = int(getattr(self, "_log_mutation_version", 0) or 0)
+        cache_key = (max_width, start, max_lines, version)
+        cache = getattr(self, "_log_window_cache", None)
+        if cache is not None and cache[0] == cache_key:
+            return cache[1], cache[2]
+
+        total_lines = self._get_total_wrapped_line_count(max_width)
+        if max_lines == 0 or start >= total_lines:
+            result: list[tuple[str, tuple[int, int, int], int | None]] = []
+            self._log_window_cache = (cache_key, result, total_lines)
+            return result, total_lines
+
+        visible: list[tuple[str, tuple[int, int, int], int | None]] = []
+        skipped = 0
+        remaining = max_lines
+
+        for entry in self.game_log:
+            wrapped_lines = self._get_wrapped_lines_for_entry(entry, max_width)
+            line_count = len(wrapped_lines)
+            if line_count == 0:
+                continue
+            if skipped + line_count <= start:
+                skipped += line_count
+                continue
+
+            local_start = max(0, start - skipped)
+            color = entry.get("_color", UI_TEXT) if isinstance(entry, dict) else UI_TEXT
+            timestamp = entry.get("time") if isinstance(entry, dict) else None
+
+            for line in wrapped_lines[local_start:]:
+                visible.append((line, color, timestamp))
+                remaining -= 1
+                if remaining <= 0:
+                    self._log_window_cache = (cache_key, visible, total_lines)
+                    return visible, total_lines
+
+            skipped += line_count
+
+        self._log_window_cache = (cache_key, visible, total_lines)
+        return visible, total_lines
+
     def _wrap_text_to_width(self, text: str, max_width: int) -> list[str]:
         """Wrap a string into a list of lines that fit within max_width."""
         if max_width <= 0:
@@ -775,20 +901,17 @@ class GameMainLoggingMixin:
         return lines or [""]
 
     def _wrap_game_log_lines(self, max_width: int) -> list[tuple[str, tuple[int, int, int], int | None]]:
-        """Expand game_log entries into individually wrapped display lines (cached)."""
-        cache = getattr(self, '_wrapped_log_cache', None)
-        if cache is not None and cache[0] == max_width and cache[1] == len(self.game_log):
-            return cache[2]
+        """Expand game_log entries into individually wrapped display lines."""
+        self._prepare_wrap_cache_width(max_width)
         wrapped: list[tuple[str, tuple[int, int, int], int | None]] = []
         for entry in self.game_log:
-            text = entry.get("log", "") if isinstance(entry, dict) else str(entry)
+            lines = self._get_wrapped_lines_for_entry(entry, max_width)
             color = entry.get("_color", UI_TEXT) if isinstance(entry, dict) else UI_TEXT
             timestamp = entry.get("time") if isinstance(entry, dict) else None
-            for line in self._wrap_text_to_width(str(text), max_width):
+            for line in lines:
                 wrapped.append((line, color, timestamp))
 
-        # Keep list order as-is so index 0 (newest) renders at the top.
-        self._wrapped_log_cache = (max_width, len(self.game_log), wrapped)
+        self._wrapped_total_lines = len(wrapped)
         return wrapped
 
     def _calc_log_geometry(self, total_log_lines: int | None = None):

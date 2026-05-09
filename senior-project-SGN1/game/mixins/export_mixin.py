@@ -143,6 +143,64 @@ class GameMainExportMixin:
                 return "'" + s
             return s
 
+        def parse_winner_label(value) -> str:
+            winner_text = str(value or "").strip().upper()
+            if not winner_text:
+                return ""
+            if "DRAW" in winner_text:
+                return "DRAW"
+            if "P1" in winner_text or winner_text.endswith("1") or "PLAYER 1" in winner_text:
+                return "P1"
+            if "P2" in winner_text or winner_text.endswith("2") or "PLAYER 2" in winner_text:
+                return "P2"
+            return ""
+
+        def parse_winner_from_summary_log(log_text) -> str:
+            text = str(log_text or "").strip().upper()
+            if not text:
+                return ""
+            if "DRAW" in text:
+                return "DRAW"
+            if "P1 WINS" in text or "PLAYER 1" in text:
+                return "P1"
+            if "P2 WINS" in text or "PLAYER 2" in text:
+                return "P2"
+            return ""
+
+        def get_game_match_winner_counts(rows: list[dict]) -> tuple[int, int]:
+            p1_matches = 0
+            p2_matches = 0
+            found_match_end = False
+
+            for row in rows:
+                action_type = str(row.get("action_type", "") or "").strip().lower()
+                if action_type != "match_end":
+                    continue
+                found_match_end = True
+                winner = parse_winner_label(row.get("winner", ""))
+                if winner == "P1":
+                    p1_matches += 1
+                elif winner == "P2":
+                    p2_matches += 1
+
+            if found_match_end:
+                return p1_matches, p2_matches
+
+            # Backward compatibility: older logs may only have `summary_result` rows.
+            for row in rows:
+                action_type = str(row.get("action_type", "") or "").strip().lower()
+                if action_type != "summary_result":
+                    continue
+                winner = parse_winner_label(row.get("winner", ""))
+                if not winner:
+                    winner = parse_winner_from_summary_log(row.get("log", ""))
+                if winner == "P1":
+                    p1_matches += 1
+                elif winner == "P2":
+                    p2_matches += 1
+
+            return p1_matches, p2_matches
+
         try:
             if not self.game_log:
                 print("No game log data to export.")
@@ -269,26 +327,17 @@ class GameMainExportMixin:
             for k in export_game_keys:
                 gd = games_data.get(k, {})
                 # prefer explicit per-game winner when available
-                game_winner = str(gd.get('winner', '') or '').strip().upper()
+                game_winner = parse_winner_label(gd.get('winner', ''))
                 if game_winner:
-                    if 'P1' in game_winner or game_winner.endswith('1') or 'PLAYER 1' in game_winner:
+                    if game_winner == 'P1':
                         p1_wins += 1
                         continue
-                    if 'P2' in game_winner or game_winner.endswith('2') or 'PLAYER 2' in game_winner:
+                    if game_winner == 'P2':
                         p2_wins += 1
                         continue
 
                 # fallback: count any logged winner fields in this game's rows
-                p1_matches = 0
-                p2_matches = 0
-                for e in gd.get('rows', []):
-                    w_raw = str(e.get('winner', '') or '').strip().upper()
-                    if not w_raw:
-                        continue
-                    if 'P1' in w_raw or w_raw.endswith('1') or 'PLAYER 1' in w_raw:
-                        p1_matches += 1
-                    elif 'P2' in w_raw or w_raw.endswith('2') or 'PLAYER 2' in w_raw:
-                        p2_matches += 1
+                p1_matches, p2_matches = get_game_match_winner_counts(gd.get('rows', []))
                 if p1_matches > p2_matches:
                     p1_wins += 1
                 elif p2_matches > p1_matches:
@@ -435,16 +484,7 @@ class GameMainExportMixin:
                 obj_p2_pct = (game_data["obj_p2"] / total_obj * 100.0) if total_obj else 0.0
 
                 # compute per-game match wins by inspecting any logged winner fields
-                p1_matches_in_game = 0
-                p2_matches_in_game = 0
-                for e in game_data.get('rows', []):
-                    winner = str(e.get('winner', '') or '').strip().upper()
-                    if not winner:
-                        continue
-                    if 'P1' in winner or winner.endswith('1') or 'PLAYER 1' in winner:
-                        p1_matches_in_game += 1
-                    elif 'P2' in winner or winner.endswith('2') or 'PLAYER 2' in winner:
-                        p2_matches_in_game += 1
+                p1_matches_in_game, p2_matches_in_game = get_game_match_winner_counts(game_data.get('rows', []))
 
                 total_matches_in_game = p1_matches_in_game + p2_matches_in_game
                 winrate_p1_game = (p1_matches_in_game / total_matches_in_game) if total_matches_in_game else 0.0

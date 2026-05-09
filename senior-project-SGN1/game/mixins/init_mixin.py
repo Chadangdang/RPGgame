@@ -14,6 +14,7 @@ import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from datetime import datetime
 import os
+from collections import deque
 from tkinter import Tk, filedialog
 from types import SimpleNamespace
 from insert.Ai_insertion_instruction import AI_INSERTION_INSTRUCTION
@@ -476,9 +477,10 @@ class GameMainInitMixin:
         self.pause_game_button_hovered = False
         # --- Game Log store ---
         # store structured dict entries for reliable export + UI rendering metadata
-        self.game_log: list[dict] = []
+        self.game_log: deque[dict] = deque()
         # uncapped archive of every log entry (chronological) for export
         self._game_log_archive: list[dict] = []
+        self._log_entry_seq = 0
         # used to mirror newly-added lines from activeAI.action_log
         self._ai_log_len: dict[object, int] = {}
         self._ai_pending_lines: dict[int, list[str]] = {}
@@ -502,6 +504,13 @@ class GameMainInitMixin:
         self._sb_dragging = False
         self._sb_drag_offset_y = 0  # mouse offset inside thumb while dragging
         self._sb_last_geometry = None  # cached geometry for hit tests
+        self._wrapped_log_cache = None
+        self._entry_wrap_cache_width: int | None = None
+        self._entry_wrap_cache: dict[int, list[str]] = {}
+        self._entry_wrap_counts: dict[int, int] = {}
+        self._wrapped_total_lines: int | None = 0
+        self._log_window_cache = None
+        self._log_mutation_version = 0
         
         self.cumulative_time = 0.0
         self.match_start_time = 0.0

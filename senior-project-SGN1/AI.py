@@ -59,10 +59,18 @@ class AIFramework:
     def activate(self, activationNo: int) -> None:
         pass
 
-    def moveCharaTo(self, chara: Character, grid: tuple[int, int]) -> None:
+    def moveCharaTo(self, chara: Character, grid: tuple[int, int]) -> bool:
         cols = "abcdefgh"
         charaName = chara.template["display_name"]
         gridName = cols[grid[1]] + str(GRID_ROWS - grid[0])
+
+        occupant = Character.getCharacterByGrid(grid)
+        if occupant is not None and occupant is not chara:
+            occupant_name = occupant.template.get("display_name", "Unknown")
+            self.action_log.append(
+                f"{charaName} cannot move to grid {gridName} (occupied by {occupant_name})"
+            )
+            return False
 
         logs = [
             f"{charaName} moves to grid {gridName}"
@@ -72,6 +80,7 @@ class AIFramework:
 
         chara.moveTo(grid)
         chara.moved = True
+        return True
 
     def useCharaAction(self, chara: Character, target: Character, actionNo: int, modifier: int) -> None:
         cols = "abcdefgh"
@@ -289,8 +298,9 @@ class Random(AIFramework):
 
         # Move to a random tile within range
         movementMap = self.field.getMovement(chara, show=False)
-        movementTiles = np.argwhere(movementMap)
-        self.moveCharaTo(chara, tuple(random.choice(movementTiles.tolist())))
+        movementTiles = np.argwhere(movementMap > 0)
+        if movementTiles.size > 0:
+            self.moveCharaTo(chara, tuple(random.choice(movementTiles.tolist())))
 
         # List of all actions unit can use
         availableActions = list(range(len(chara.template["actions"])))
@@ -300,6 +310,7 @@ class Random(AIFramework):
             # If no targets for all available actions, pass
             self.passCharaAction(chara)
         else:        
+            acted = False
             while availableActions:
                 # Choose one action from the list and get its tiles
                 chosenAction = availableActions.pop()        
@@ -323,7 +334,11 @@ class Random(AIFramework):
                     else:
                         modifier = 0
                     self.useCharaAction(chara, target, chosenAction, modifier)
-                break
+                    acted = True
+                    break
+
+            if not acted:
+                self.passCharaAction(chara)
 
         self.turnFinished = self.checkCharaActed()
 
@@ -463,14 +478,29 @@ class PerfectPlay(AIFramework):
 
         tiles = np.argwhere(self.optimalMap[0] == chara.id)
         if tiles.size > 0:
-            tile_choice = tuple(random.choice(tiles.tolist()))
+            available_tiles = []
+            for tile in tiles.tolist():
+                tile_choice = (int(tile[0]), int(tile[1]))
+                occupant = Character.getCharacterByGrid(tile_choice)
+                if occupant is None or occupant is chara:
+                    available_tiles.append(tile_choice)
+
+            if not available_tiles:
+                self.passCharaAction(chara)
+                self.turnFinished = self.checkCharaActed()
+                return
+
+            tile_choice = random.choice(available_tiles)
 
             row = tile_choice[0]
             col = tile_choice[1]
             optimalActionNo = int(self.optimalMap[1][row][col])
             targetPlayerID = int(self.optimalMap[2][row][col])
 
-            self.moveCharaTo(chara, tile_choice)
+            if not self.moveCharaTo(chara, tile_choice):
+                self.passCharaAction(chara)
+                self.turnFinished = self.checkCharaActed()
+                return
 
             # Perform attack.
 
@@ -489,6 +519,8 @@ class PerfectPlay(AIFramework):
                 # print(f"Warning: Target with ID {targetPlayerID} is not found!")
                 self.passCharaAction(chara)
                 pass
+        else:
+            self.passCharaAction(chara)
         
         self.turnFinished = self.checkCharaActed()
 
@@ -697,14 +729,29 @@ class PersonalityCores(AIFramework):
 
         tiles = np.argwhere(self.optimalMap[0] == chara.id)
         if tiles.size > 0:
-            tile_choice = tuple(random.choice(tiles.tolist()))
+            available_tiles = []
+            for tile in tiles.tolist():
+                tile_choice = (int(tile[0]), int(tile[1]))
+                occupant = Character.getCharacterByGrid(tile_choice)
+                if occupant is None or occupant is chara:
+                    available_tiles.append(tile_choice)
+
+            if not available_tiles:
+                self.passCharaAction(chara)
+                self.turnFinished = self.checkCharaActed()
+                return
+
+            tile_choice = random.choice(available_tiles)
 
             row = tile_choice[0]
             col = tile_choice[1]
             optimalActionNo = int(self.optimalMap[1][row][col])
             targetPlayerID = int(self.optimalMap[2][row][col])
 
-            self.moveCharaTo(chara, tile_choice)
+            if not self.moveCharaTo(chara, tile_choice):
+                self.passCharaAction(chara)
+                self.turnFinished = self.checkCharaActed()
+                return
 
             # Perform attack.
 
@@ -723,6 +770,8 @@ class PersonalityCores(AIFramework):
                 # print(f"Warning: Target with ID {targetPlayerID} is not found!")
                 self.passCharaAction(chara)
                 pass
+        else:
+            self.passCharaAction(chara)
         
         self.turnFinished = self.checkCharaActed()
 
@@ -734,9 +783,9 @@ class AggressivePersonalityCoresAI(PersonalityCores):
         # Keep 3 entries for parent calculate() compatibility.
         # Every entry still uses only DAMAGE_WEIGHT.
         self.personalities = [
-            Personality('Aggressive', (1.0, 0.0, 0.0)),
-            Personality('Aggressive', (1.0, 0.0, 0.0)),
-            Personality('Aggressive', (1.0, 0.0, 0.0))
+            Personality('Aggressive', (1.5, 0.9, 0.3)),
+            Personality('Aggressive', (1.5, 0.9, 0.3)),
+            Personality('Aggressive', (1.5, 0.9, 0.3))
         ]
 
 
@@ -746,9 +795,9 @@ class StrategicPersonalityCoresAI(PersonalityCores):
         # Keep 3 entries for parent calculate() compatibility.
         # Every entry still uses only OBJECTIVE_WEIGHT.
         self.personalities = [
-            Personality('Strategic', (0.0, 1.0, 0.0)),
-            Personality('Strategic', (0.0, 1.0, 0.0)),
-            Personality('Strategic', (0.0, 1.0, 0.0))
+            Personality('Strategic', (0.3, 1.3, 0.9)),
+            Personality('Strategic', (0.3, 1.3, 0.9)),
+            Personality('Strategic', (0.3, 1.3, 0.9))
         ]
 
 
@@ -758,9 +807,9 @@ class SurvivalPersonalityCoresAI(PersonalityCores):
         # Keep 3 entries for parent calculate() compatibility.
         # Every entry still uses only THREAT_WEIGHT.
         self.personalities = [
-            Personality('Survival', (0.0, 0.0, 1.0)),
-            Personality('Survival', (0.0, 0.0, 1.0)),
-            Personality('Survival', (0.0, 0.0, 1.0))
+            Personality('Survival', (0.2, 0.5, 1.5)),
+            Personality('Survival', (0.2, 0.5, 1.5)),
+            Personality('Survival', (0.2, 0.5, 1.5))
         ]
 
 
@@ -866,7 +915,10 @@ class KillOneByOneAI(AIFramework):
 
         if best_candidate is not None:
             row, col, action_no, target_id, planned_damage = best_candidate
-            self.moveCharaTo(chara, (row, col))
+            if not self.moveCharaTo(chara, (row, col)):
+                self.passCharaAction(chara)
+                self.turnFinished = self.checkCharaActed()
+                return
             target = Character.getCharacterByID(int(target_id))
             if target is not None and not chara.acted:
                 if self.terrain[target.grid[0]][target.grid[1]] == 1:

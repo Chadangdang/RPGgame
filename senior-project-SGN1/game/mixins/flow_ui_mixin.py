@@ -156,6 +156,8 @@ class GameMainFlowUiMixin:
         self.game_log.clear()
         if hasattr(self, '_game_log_archive'):
             self._game_log_archive.clear()
+        if hasattr(self, '_reset_log_runtime_caches'):
+            self._reset_log_runtime_caches()
         self._ai_log_len = {}
         self._ai_pending_lines.clear()
         self._pending_ko_sources = {}
@@ -190,6 +192,8 @@ class GameMainFlowUiMixin:
         self.game_log.clear()
         if hasattr(self, '_game_log_archive'):
             self._game_log_archive.clear()
+        if hasattr(self, '_reset_log_runtime_caches'):
+            self._reset_log_runtime_caches()
         self._ai_log_len = {}
         self._ai_pending_lines.clear()
         self._pending_ko_sources = {}

@@ -736,8 +736,8 @@ class GameMainUpdateMixin:
         elif self.game_screen == 1:
             self.cumulative_time += dt
             log_content_width = self._log_content_width()
-            wrapped_log_lines = self._wrap_game_log_lines(log_content_width)
-            geom = self._calc_log_geometry(total_log_lines=len(wrapped_log_lines))
+            total_log_lines = self._get_total_wrapped_line_count(log_content_width)
+            geom = self._calc_log_geometry(total_log_lines=total_log_lines)
             self._sb_last_geometry = geom
 
             endgame_active = self._is_endgame_popup_active()
@@ -1326,10 +1326,47 @@ class GameMainUpdateMixin:
                             if self.field.boxes[enemy.grid[0]][enemy.grid[1]].terrain == 3:
                                 team2_win_count += 1
 
+                        team1_alive = len(Character.team1_list)
+                        team2_alive = len(Character.team2_list)
+
                         match_winner = 0
                         next_round = False
 
-                        if team1_win_count > team2_win_count:
+                        # Hard-stop elimination resolution to prevent endless rounds.
+                        # This triggers when one side is wiped or both sides are wiped.
+                        if team1_alive == 0 or team2_alive == 0:
+                            if team1_alive > team2_alive:
+                                match_winner = 1
+                            elif team2_alive > team1_alive:
+                                match_winner = 2
+                            else:
+                                # Both teams wiped: deterministic tie-breaker for benchmark fairness.
+                                if self.obj_control_team1 > self.obj_control_team2:
+                                    match_winner = 1
+                                elif self.obj_control_team2 > self.obj_control_team1:
+                                    match_winner = 2
+                                elif self.p1_round_wins > self.p2_round_wins:
+                                    match_winner = 1
+                                elif self.p2_round_wins > self.p1_round_wins:
+                                    match_winner = 2
+                                else:
+                                    # Alternate winner in perfect ties to avoid systemic bias.
+                                    match_winner = 1 if ((self.current_game + self.current_match) % 2 == 0) else 2
+
+                            self.p1_dom_count = 0
+                            self.p2_dom_count = 0
+                            self.log_event(
+                                'summary',
+                                message=(
+                                    f"Elimination resolution applied (alive P1={team1_alive}, "
+                                    f"P2={team2_alive})"
+                                ),
+                                game=self.current_game,
+                                match=self.current_match,
+                                time_elapsed=self.cumulative_time,
+                            )
+
+                        if match_winner == 0 and team1_win_count > team2_win_count:
                             self.p1_round_wins += 1
                             if self.p1_dom_count == 0:
                                 self.p1_dom_count = 1
@@ -1339,7 +1376,7 @@ class GameMainUpdateMixin:
                                 match_winner = 1
                             else:
                                 print('There is a problem with dominance check')
-                        elif team2_win_count > team1_win_count:
+                        elif match_winner == 0 and team2_win_count > team1_win_count:
                             self.p2_round_wins += 1
                             if self.p2_dom_count == 0:
                                 self.p2_dom_count = 1
@@ -1349,7 +1386,7 @@ class GameMainUpdateMixin:
                                 match_winner = 2
                             else:
                                 print('There is a problem with dominance check')
-                        else:
+                        elif match_winner == 0:
                             next_round = True
                             self.p1_dom_count = 0  # remove these 2 lines may cause a bug
                             self.p2_dom_count = 0  # but it may be a good feature
