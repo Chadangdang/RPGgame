@@ -98,6 +98,11 @@ class Field:
     def getMovement(self, chara: Character, show: bool = True) -> np.ndarray: 
         movementMap = np.zeros((GRID_ROWS, GRID_COLS))
         movement_value = getattr(chara, 'movement', chara.template.get('movement', 0))
+        occupied_tiles = {
+            unit.grid
+            for unit in (Character.team1_list + Character.team2_list)
+            if unit is not chara
+        }
         for route_number in range(4 ** movement_value):
             # route = '{0:x}'.format(route).zfill(movement_value)
             route = ''
@@ -120,12 +125,11 @@ class Field:
                     cur_col -= 1
 
                 if 0 <= cur_row < self.rows and 0 <= cur_col < self.cols:
-                    if self.boxes[cur_row][cur_col].terrain == 2 or (cur_row, cur_col) in [unit.grid for unit in Character.team2_list]:
+                    if self.boxes[cur_row][cur_col].terrain == 2 or (cur_row, cur_col) in occupied_tiles:
                         break
-                    if (cur_row, cur_col) not in [unit.grid for unit in Character.team1_list]:
-                        # if show:
-                        #     self.field.boxes[cur_row][cur_col].selected = True
-                        movementMap[cur_row][cur_col] = 1
+                    # if show:
+                    #     self.field.boxes[cur_row][cur_col].selected = True
+                    movementMap[cur_row][cur_col] = 1
                 else:
                     break
         if show:

@@ -641,6 +641,10 @@ class PersonalityCores(AIFramework):
 
         DAMAGE_WEIGHT = 1.5 - 0.5 * (enemy_team_HP / (enemy_team_max_HP + 0.000000000000001))
 
+        base_damage_weight = DAMAGE_WEIGHT
+        base_objective_weight = OBJECTIVE_WEIGHT
+        base_threat_weight = THREAT_WEIGHT
+
         # print(f'THREAT_WEIGHT = {THREAT_WEIGHT}')
         # print(f'DAMAGE_WEIGHT = {DAMAGE_WEIGHT}')
 
@@ -687,18 +691,20 @@ class PersonalityCores(AIFramework):
             ########
             # APPLY ADJUSTMENTS FROM PERSONALITY
             #
-            c_weights = [DAMAGE_WEIGHT, OBJECTIVE_WEIGHT, THREAT_WEIGHT]
-            DAMAGE_WEIGHT, OBJECTIVE_WEIGHT, THREAT_WEIGHT = [c_weight * mult for c_weight, mult in zip(c_weights, self.chosen_personality.c_weights_mult)]
+            c_weights = [base_damage_weight, base_objective_weight, base_threat_weight]
+            adjusted_damage_weight, adjusted_objective_weight, adjusted_threat_weight = [
+                c_weight * mult for c_weight, mult in zip(c_weights, self.chosen_personality.c_weights_mult)
+            ]
             #
             #
             ########
             
             objectiveMap = np.zeros((GRID_ROWS, GRID_COLS))
-            objectiveMap[np.nonzero(self.terrain == 3)] = OBJECTIVE_WEIGHT
+            objectiveMap[np.nonzero(self.terrain == 3)] = adjusted_objective_weight
             objectiveMap = propagate_half(objectiveMap)
             # print(objectiveMap)
 
-            destinationMap = (DAMAGE_WEIGHT * destinationMap) + objectiveMap - (THREAT_WEIGHT * enemyThreatMap)
+            destinationMap = (adjusted_damage_weight * destinationMap) + objectiveMap - (adjusted_threat_weight * enemyThreatMap)
             optimalIndices = np.argwhere(destinationMap == np.max(destinationMap))
             optimalIndicesList.append([own_unit.id, bestActionMap, bestTargetMap, optimalIndices])
             # print(optimalIndicesList)
