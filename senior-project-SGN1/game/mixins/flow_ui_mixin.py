@@ -606,7 +606,9 @@ class GameMainFlowUiMixin:
         if not isinstance(self.team2_ID, int) or self.team2_ID < 0 or self.team2_ID >= ai_count:
             print(f"Warning: team2_ID {self.team2_ID} out of range, defaulting to 0")
         try:
-            self.GameMaster.setTeams(self.team1_ID, self.team2_ID)
+            team1_ai_ids = self.settings.team1_char_ai_ids if self.settings.per_character_ai_enabled else None
+            team2_ai_ids = self.settings.team2_char_ai_ids if self.settings.per_character_ai_enabled else None
+            self.GameMaster.setTeams(self.team1_ID, self.team2_ID, team1_char_ai_ids=team1_ai_ids, team2_char_ai_ids=team2_ai_ids)
             self.GameMaster.team1.loadField(self.field)
             self.GameMaster.team2.loadField(self.field)
         except Exception as e:

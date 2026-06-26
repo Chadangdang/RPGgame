@@ -454,6 +454,33 @@ class GameMainUpdateMixin:
                                 print("=== BALANCE MODE CHANGED ===")
                                 print("Now using:", self.settings.balance_mode)
                                 continue
+                        if self._settings_popup_page == 'char_ai':
+                            if event.key in (pygame.K_UP, pygame.K_DOWN):
+                                if event.key == pygame.K_UP:
+                                    self._settings_char_ai_selected_row = (
+                                        self._settings_char_ai_selected_row - 1
+                                    ) % len(self._settings_char_ai_row_rects)
+                                else:
+                                    self._settings_char_ai_selected_row = (
+                                        self._settings_char_ai_selected_row + 1
+                                    ) % len(self._settings_char_ai_row_rects)
+                                continue
+                            if event.key in (pygame.K_LEFT, pygame.K_RIGHT):
+                                delta = -1 if event.key == pygame.K_LEFT else 1
+                                idx = self._settings_char_ai_selected_row
+                                labels = AI_SELECTION_LABELS()
+                                if idx < 3:
+                                    self.settings.team1_char_ai_ids[idx] = (
+                                        self.settings.team1_char_ai_ids[idx] + delta
+                                    ) % len(labels)
+                                else:
+                                    self.settings.team2_char_ai_ids[idx - 3] = (
+                                        self.settings.team2_char_ai_ids[idx - 3] + delta
+                                    ) % len(labels)
+                                continue
+                            if event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_z):
+                                self.settings.per_character_ai_enabled = not self.settings.per_character_ai_enabled
+                                continue
 
                     # Mouse handling inside popup
                     if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -473,6 +500,9 @@ class GameMainUpdateMixin:
                             if self._settings_main_balance_button_rect.collidepoint(event.pos):
                                 self._settings_popup_page = 'balance'
                                 continue
+                            if self._settings_main_char_ai_button_rect.collidepoint(event.pos):
+                                self._settings_popup_page = 'char_ai'
+                                continue
                             if self._settings_main_resolution_button_rect.collidepoint(event.pos):
                                 self._toggle_resolution()
                                 continue
@@ -486,6 +516,29 @@ class GameMainUpdateMixin:
                                 continue
 
                             self._active_limit_input = None
+                            continue
+
+                        if self._settings_popup_page == 'char_ai':
+                            if self._settings_sub_back_rect.collidepoint(event.pos):
+                                self._settings_popup_page = 'main'
+                                continue
+                            if self._settings_char_ai_toggle_rect.collidepoint(event.pos):
+                                self.settings.per_character_ai_enabled = not self.settings.per_character_ai_enabled
+                                continue
+                            for idx, row_rect in enumerate(self._settings_char_ai_row_rects):
+                                if row_rect.collidepoint(event.pos):
+                                    self._settings_char_ai_selected_row = idx
+                                    if self.settings.per_character_ai_enabled:
+                                        labels = AI_SELECTION_LABELS()
+                                        if idx < 3:
+                                            self.settings.team1_char_ai_ids[idx] = (
+                                                self.settings.team1_char_ai_ids[idx] + 1
+                                            ) % len(labels)
+                                        else:
+                                            self.settings.team2_char_ai_ids[idx - 3] = (
+                                                self.settings.team2_char_ai_ids[idx - 3] + 1
+                                            ) % len(labels)
+                                    break
                             continue
 
                         # Back button from subpage

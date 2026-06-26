@@ -129,7 +129,7 @@ class GameMainInitMixin:
         self._settings_button_rect = pygame.Rect(WIDTH - 190, 22, 150, 52)
         self._settings_button_hovered = False
         self._settings_popup_open = False
-        self._settings_popup_page = 'main'  # 'main' | 'balance'
+        self._settings_popup_page = 'main'  # 'main' | 'balance' | 'char_ai'
         settings_popup_w, settings_popup_h = 1063, 907
         settings_popup_x = (WIDTH - settings_popup_w) // 2
         settings_popup_y = (HEIGHT - settings_popup_h) // 2
@@ -141,9 +141,15 @@ class GameMainInitMixin:
             self._settings_popup_rect.width - 280,
             92,
         )
-        self._settings_main_resolution_button_rect = pygame.Rect(
+        self._settings_main_char_ai_button_rect = pygame.Rect(
             self._settings_popup_rect.x + 140,
             self._settings_popup_rect.y + 330,
+            self._settings_popup_rect.width - 280,
+            92,
+        )
+        self._settings_main_resolution_button_rect = pygame.Rect(
+            self._settings_popup_rect.x + 140,
+            self._settings_popup_rect.y + 450,
             self._settings_popup_rect.width - 280,
             92,
         )
@@ -187,8 +193,27 @@ class GameMainInitMixin:
         ]
         self._balance_keyboard_index = 0
 
-        self.settings = SimpleNamespace(balance_mode=balance_controller.BASELINE)
+        self.settings = SimpleNamespace(
+            balance_mode=balance_controller.BASELINE,
+            per_character_ai_enabled=False,
+            team1_char_ai_ids=[0, 0, 0],
+            team2_char_ai_ids=[0, 0, 0],
+        )
         balance_controller.load_balance_mode(self.settings.balance_mode)
+
+        self._settings_char_ai_labels = [
+            'Team 1 - Character 1',
+            'Team 1 - Character 2',
+            'Team 1 - Character 3',
+            'Team 2 - Character 1',
+            'Team 2 - Character 2',
+            'Team 2 - Character 3',
+        ]
+        self._settings_char_ai_toggle_rect: pygame.Rect
+        self._settings_char_ai_row_rects: list[pygame.Rect] = []
+        self._settings_char_ai_value_rects: list[pygame.Rect] = []
+        self._settings_char_ai_selected_row = 0
+        self._init_settings_char_ai_geometry()
 
         self.game_state = 'selecting start area'
 
@@ -538,6 +563,30 @@ class GameMainInitMixin:
         self.p2_sel_cursor = SelectMenuCursor(self.screen, (420, 60), (ai_choice_count, 1))
         self._ai_type_labels = labels
         self._refresh_ai_description_lines()
+
+    def _init_settings_char_ai_geometry(self) -> None:
+        base_x = self._settings_popup_rect.x + 140
+        toggle_y = self._settings_popup_rect.y + 220
+        self._settings_char_ai_toggle_rect = pygame.Rect(
+            base_x,
+            toggle_y,
+            self._settings_popup_rect.width - 280,
+            92,
+        )
+
+        row_top = self._settings_char_ai_toggle_rect.bottom + 24
+        row_height = 70
+        row_gap = 14
+        self._settings_char_ai_row_rects = []
+        self._settings_char_ai_value_rects = []
+
+        for idx in range(len(self._settings_char_ai_labels)):
+            row_y = row_top + idx * (row_height + row_gap)
+            row_rect = pygame.Rect(base_x, row_y, self._settings_popup_rect.width - 280, row_height)
+            self._settings_char_ai_row_rects.append(row_rect)
+            self._settings_char_ai_value_rects.append(
+                pygame.Rect(row_rect.right - 320, row_rect.y + 12, 304, row_height - 24)
+            )
 
     def _refresh_ai_description_lines(self) -> None:
         lines = list(getattr(self, '_instr_ai_lines_base', []))

@@ -461,6 +461,13 @@ class GameMainRenderMixin:
                     balance_btn_text = self.font_sm.render('Balance Tweaking >', False, (0, 0, 0))
                     self.screen.blit(balance_btn_text, balance_btn_text.get_rect(center=self._settings_main_balance_button_rect.center))
 
+                    char_ai_btn_hovered = self._settings_main_char_ai_button_rect.collidepoint(mouse_pos)
+                    char_ai_btn_fill = (236, 228, 215) if not char_ai_btn_hovered else (226, 216, 199)
+                    pygame.draw.rect(self.screen, char_ai_btn_fill, self._settings_main_char_ai_button_rect, border_radius=10)
+                    pygame.draw.rect(self.screen, (90, 80, 66), self._settings_main_char_ai_button_rect, 2, border_radius=10)
+                    char_ai_btn_text = self.font_sm.render('Per-Character AI >', False, (0, 0, 0))
+                    self.screen.blit(char_ai_btn_text, char_ai_btn_text.get_rect(center=self._settings_main_char_ai_button_rect.center))
+
                     resolution_btn_hovered = self._settings_main_resolution_button_rect.collidepoint(mouse_pos)
                     resolution_btn_fill = (236, 228, 215) if not resolution_btn_hovered else (226, 216, 199)
                     pygame.draw.rect(self.screen, resolution_btn_fill, self._settings_main_resolution_button_rect, border_radius=10)
@@ -495,7 +502,7 @@ class GameMainRenderMixin:
                     match_value_surface = self.font_sm.render(str(getattr(self, '_match_limit_input', self.match_limit)), False, (0, 0, 0))
                     value_rect = match_value_surface.get_rect(midleft=(self._match_limit_box_rect.x + 12, self._match_limit_box_rect.centery))
                     self.screen.blit(match_value_surface, value_rect)
-                else:
+                elif self._settings_popup_page == 'balance':
                     back_hovered = self._settings_sub_back_rect.collidepoint(mouse_pos)
                     back_fill = (236, 236, 236) if not back_hovered else (223, 223, 223)
                     pygame.draw.rect(self.screen, back_fill, self._settings_sub_back_rect, border_radius=8)
@@ -544,6 +551,50 @@ class GameMainRenderMixin:
                         else:
                             label_surface = self.font_s.render(self._balance_option_labels[idx], False, self._balance_option_colors[idx])
                             self.screen.blit(label_surface, label_surface.get_rect(midleft=(label_x, label_y)))
+                elif self._settings_popup_page == 'char_ai':
+                    back_hovered = self._settings_sub_back_rect.collidepoint(mouse_pos)
+                    back_fill = (236, 236, 236) if not back_hovered else (223, 223, 223)
+                    pygame.draw.rect(self.screen, back_fill, self._settings_sub_back_rect, border_radius=8)
+                    pygame.draw.rect(self.screen, (60, 60, 60), self._settings_sub_back_rect, 2, border_radius=8)
+                    back_text = self.font_s.render('< Back', False, (0, 0, 0))
+                    self.screen.blit(back_text, back_text.get_rect(center=self._settings_sub_back_rect.center))
+
+                    title = self.font_sm.render('Per-Character AI Assignment', False, (0, 0, 0))
+                    self.screen.blit(title, title.get_rect(center=(self._settings_popup_rect.centerx, self._settings_popup_rect.y + 120)))
+
+                    toggle_hovered = self._settings_char_ai_toggle_rect.collidepoint(mouse_pos)
+                    toggle_fill = (236, 236, 236) if not toggle_hovered else (223, 223, 223)
+                    pygame.draw.rect(self.screen, toggle_fill, self._settings_char_ai_toggle_rect, border_radius=10)
+                    pygame.draw.rect(self.screen, (60, 60, 60), self._settings_char_ai_toggle_rect, 2, border_radius=10)
+                    toggle_text = self.font_sm.render('Enable per-character AI assignment', False, (0, 0, 0))
+                    self.screen.blit(toggle_text, toggle_text.get_rect(midleft=(self._settings_char_ai_toggle_rect.x + 20, self._settings_char_ai_toggle_rect.centery)))
+                    checkbox_rect = pygame.Rect(self._settings_char_ai_toggle_rect.right - 64, self._settings_char_ai_toggle_rect.centery - 15, 30, 30)
+                    pygame.draw.rect(self.screen, (255, 255, 255), checkbox_rect, border_radius=4)
+                    pygame.draw.rect(self.screen, (60, 60, 60), checkbox_rect, 2, border_radius=4)
+                    if self.settings.per_character_ai_enabled:
+                        pygame.draw.line(self.screen, (0, 0, 0), (checkbox_rect.left + 6, checkbox_rect.centery), (checkbox_rect.centerx - 1, checkbox_rect.bottom - 6), 4)
+                        pygame.draw.line(self.screen, (0, 0, 0), (checkbox_rect.centerx - 1, checkbox_rect.bottom - 6), (checkbox_rect.right - 6, checkbox_rect.top + 6), 4)
+
+                    label_y_offset = 0
+                    for idx, row_rect in enumerate(self._settings_char_ai_row_rects):
+                        row_hovered = row_rect.collidepoint(mouse_pos)
+                        row_selected = idx == self._settings_char_ai_selected_row
+                        if row_selected:
+                            row_fill = (252, 242, 215)
+                        elif row_hovered:
+                            row_fill = (245, 243, 232)
+                        else:
+                            row_fill = (252, 249, 244)
+                        pygame.draw.rect(self.screen, row_fill, row_rect, border_radius=10)
+                        pygame.draw.rect(self.screen, (130, 120, 104), row_rect, 2, border_radius=10)
+                        label_surface = self.font_s.render(self._settings_char_ai_labels[idx], False, (0, 0, 0))
+                        self.screen.blit(label_surface, label_surface.get_rect(midleft=(row_rect.x + 22, row_rect.centery)))
+                        value = AI_SELECTION_LABELS()[self.settings.team1_char_ai_ids[idx] if idx < 3 else self.settings.team2_char_ai_ids[idx - 3]]
+                        value_surface = self.font_s.render(value, False, (10, 10, 10))
+                        value_rect = self._settings_char_ai_value_rects[idx]
+                        self.screen.blit(value_surface, value_surface.get_rect(midright=(value_rect.right - 20, value_rect.centery)))
+                        arrow = self.font_sm.render('◄ ►', False, (0, 0, 0))
+                        self.screen.blit(arrow, arrow.get_rect(midleft=(value_rect.x + 8, value_rect.centery)))
 
             # Map popup (reuse existing implementation)
             if self._map_popup_open:
