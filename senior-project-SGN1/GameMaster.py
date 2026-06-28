@@ -8,6 +8,8 @@ AI_list: list[type[AIFramework]] = ai_import_manager.get_ai_list()
 
 class PerCharacterTeamAI(AIFramework):
     def __init__(self, team: int, char_ai_ids: list[int]) -> None:
+        self.per_char_ais: list[AIFramework] = []
+        self.char_ai_ids: list[int] = []
         super().__init__(team)
         max_index = max(0, len(AI_list) - 1)
         self.char_ai_ids = [max(0, min(int(ai_id), max_index)) for ai_id in char_ai_ids[:3]]
@@ -76,17 +78,17 @@ class GameMaster:
         team2_char_ai_ids: list[int] | None = None,
     ) -> None:
         refresh_ai_pool()
-        if team1 == 0:
-            self.team1 = AI_list[0](team=1)
-        elif team1_char_ai_ids is not None and len(team1_char_ai_ids) > 0:
+        if team1_char_ai_ids is not None and len(team1_char_ai_ids) > 0:
             self.team1 = PerCharacterTeamAI(team=1, char_ai_ids=team1_char_ai_ids)
+        elif team1 == 0:
+            self.team1 = AI_list[0](team=1)
         else:
             self.team1 = AI_list[team1](team=1)
 
-        if team2 == 0:
-            self.team2 = AI_list[0](team=2)
-        elif team2_char_ai_ids is not None and len(team2_char_ai_ids) > 0:
+        if team2_char_ai_ids is not None and len(team2_char_ai_ids) > 0:
             self.team2 = PerCharacterTeamAI(team=2, char_ai_ids=team2_char_ai_ids)
+        elif team2 == 0:
+            self.team2 = AI_list[0](team=2)
         else:
             self.team2 = AI_list[team2](team=2)
 

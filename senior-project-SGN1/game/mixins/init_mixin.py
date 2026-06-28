@@ -196,8 +196,8 @@ class GameMainInitMixin:
         self.settings = SimpleNamespace(
             balance_mode=balance_controller.BASELINE,
             per_character_ai_enabled=False,
-            team1_char_ai_ids=[0, 0, 0],
-            team2_char_ai_ids=[0, 0, 0],
+            team1_char_ai_ids=[1, 1, 1],
+            team2_char_ai_ids=[1, 1, 1],
         )
         balance_controller.load_balance_mode(self.settings.balance_mode)
 
@@ -210,6 +210,7 @@ class GameMainInitMixin:
             'Team 2 - Character 3',
         ]
         self._settings_char_ai_toggle_rect: pygame.Rect
+        self._settings_char_ai_start_button_rect: pygame.Rect
         self._settings_char_ai_row_rects: list[pygame.Rect] = []
         self._settings_char_ai_value_rects: list[pygame.Rect] = []
         self._settings_char_ai_selected_row = 0
@@ -572,6 +573,12 @@ class GameMainInitMixin:
             toggle_y,
             self._settings_popup_rect.width - 280,
             92,
+        )
+        self._settings_char_ai_start_button_rect = pygame.Rect(
+            self._settings_popup_rect.centerx - 160,
+            self._settings_popup_rect.bottom - 92,
+            320,
+            68,
         )
 
         row_top = self._settings_char_ai_toggle_rect.bottom + 24

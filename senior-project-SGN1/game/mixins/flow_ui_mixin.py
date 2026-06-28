@@ -75,6 +75,13 @@ class GameMainFlowUiMixin:
             self.match_limit = match_input
         return game_input, match_input
 
+    def _can_start_with_current_selection(self) -> bool:
+        if getattr(getattr(self, 'settings', None), 'per_character_ai_enabled', False):
+            return True
+        p1_cursor = getattr(self, 'p1_sel_cursor', None)
+        p2_cursor = getattr(self, 'p2_sel_cursor', None)
+        return bool(p1_cursor and p2_cursor and p1_cursor.show and p2_cursor.show)
+
     def _attempt_start_session(self) -> bool:
         game_input, match_input = self._sync_limit_values_from_inputs()
         if game_input is None or match_input is None or self.game_limit < 1 or self.match_limit < 1:
@@ -463,13 +470,39 @@ class GameMainFlowUiMixin:
         self.game_limit = max(self._game_limit_min, self.game_limit)
         self.match_limit = max(self._match_limit_min, self.match_limit)
 
-        p1_row = self.p1_sel_cursor.grid[0]
-        p2_row = self.p2_sel_cursor.grid[0]
-        self.team1_ID = self._selection_row_to_team_id(p1_row)
-        self.team2_ID = self._selection_row_to_team_id(p2_row)
-        p1_label = self._ai_type_labels[p1_row] if 0 <= p1_row < len(self._ai_type_labels) else 'Unknown'
-        p2_label = self._ai_type_labels[p2_row] if 0 <= p2_row < len(self._ai_type_labels) else 'Unknown'
-        print(f'{p1_label} vs {p2_label}')
+        per_character_enabled = bool(getattr(getattr(self, 'settings', None), 'per_character_ai_enabled', False))
+        if per_character_enabled:
+            labels = AI_SELECTION_LABELS()
+            team1_char_ids = list(getattr(getattr(self, 'settings', None), 'team1_char_ai_ids', []) or [])
+            team2_char_ids = list(getattr(getattr(self, 'settings', None), 'team2_char_ai_ids', []) or [])
+            if len(team1_char_ids) < 3:
+                team1_char_ids = team1_char_ids + [1] * (3 - len(team1_char_ids))
+            if len(team2_char_ids) < 3:
+                team2_char_ids = team2_char_ids + [1] * (3 - len(team2_char_ids))
+            team1_char_ids = [max(0, min(int(i), len(labels) - 1)) for i in team1_char_ids[:3]]
+            team2_char_ids = [max(0, min(int(i), len(labels) - 1)) for i in team2_char_ids[:3]]
+            if not any(i != 0 for i in team1_char_ids):
+                team1_char_ids = [1, 1, 1]
+            if not any(i != 0 for i in team2_char_ids):
+                team2_char_ids = [1, 1, 1]
+            self.team1_ID = self._selection_row_to_team_id(self.p1_sel_cursor.grid[0]) if self.p1_sel_cursor.show else 1
+            self.team2_ID = self._selection_row_to_team_id(self.p2_sel_cursor.grid[0]) if self.p2_sel_cursor.show else 1
+            self._per_character_team1_ids = team1_char_ids
+            self._per_character_team2_ids = team2_char_ids
+            p1_label = self._ai_type_labels[self.p1_sel_cursor.grid[0]] if 0 <= self.p1_sel_cursor.grid[0] < len(self._ai_type_labels) else 'Unknown'
+            p2_label = self._ai_type_labels[self.p2_sel_cursor.grid[0]] if 0 <= self.p2_sel_cursor.grid[0] < len(self._ai_type_labels) else 'Unknown'
+            print(f'Per-character AI: {p1_label} vs {p2_label}')
+            print(f'Per-character assignments team1={self._per_character_team1_ids} team2={self._per_character_team2_ids}')
+        else:
+            p1_row = self.p1_sel_cursor.grid[0]
+            p2_row = self.p2_sel_cursor.grid[0]
+            self.team1_ID = self._selection_row_to_team_id(p1_row)
+            self.team2_ID = self._selection_row_to_team_id(p2_row)
+            self._per_character_team1_ids = []
+            self._per_character_team2_ids = []
+            p1_label = self._ai_type_labels[p1_row] if 0 <= p1_row < len(self._ai_type_labels) else 'Unknown'
+            p2_label = self._ai_type_labels[p2_row] if 0 <= p2_row < len(self._ai_type_labels) else 'Unknown'
+            print(f'{p1_label} vs {p2_label}')
 
         self.currentMatch = 0
         self.current_match = 0
@@ -606,8 +639,8 @@ class GameMainFlowUiMixin:
         if not isinstance(self.team2_ID, int) or self.team2_ID < 0 or self.team2_ID >= ai_count:
             print(f"Warning: team2_ID {self.team2_ID} out of range, defaulting to 0")
         try:
-            team1_ai_ids = self.settings.team1_char_ai_ids if self.settings.per_character_ai_enabled else None
-            team2_ai_ids = self.settings.team2_char_ai_ids if self.settings.per_character_ai_enabled else None
+            team1_ai_ids = self._per_character_team1_ids if self.settings.per_character_ai_enabled else None
+            team2_ai_ids = self._per_character_team2_ids if self.settings.per_character_ai_enabled else None
             self.GameMaster.setTeams(self.team1_ID, self.team2_ID, team1_char_ai_ids=team1_ai_ids, team2_char_ai_ids=team2_ai_ids)
             self.GameMaster.team1.loadField(self.field)
             self.GameMaster.team2.loadField(self.field)

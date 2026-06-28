@@ -525,6 +525,12 @@ class GameMainUpdateMixin:
                             if self._settings_char_ai_toggle_rect.collidepoint(event.pos):
                                 self.settings.per_character_ai_enabled = not self.settings.per_character_ai_enabled
                                 continue
+                            if self._settings_char_ai_start_button_rect.collidepoint(event.pos):
+                                if self._can_start_with_current_selection():
+                                    self._attempt_start_session()
+                                else:
+                                    self._set_start_alert('Please select both players before starting.')
+                                continue
                             for idx, row_rect in enumerate(self._settings_char_ai_row_rects):
                                 if row_rect.collidepoint(event.pos):
                                     self._settings_char_ai_selected_row = idx
@@ -563,8 +569,10 @@ class GameMainUpdateMixin:
 
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_RETURN:
-                        if self.p1_sel_cursor.show and self.p2_sel_cursor.show:
+                        if self._can_start_with_current_selection():
                             self._attempt_start_session()
+                        else:
+                            self._set_start_alert('Please select both players before starting.')
             # ESC exits the app on AI-select page
                     if event.key == pygame.K_ESCAPE:
                         pygame.quit()
@@ -647,8 +655,10 @@ class GameMainUpdateMixin:
                             self._settings_popup_open = not self._settings_popup_open
                             self._settings_popup_page = 'main'
                         elif focus == 'start':
-                            if self.p1_sel_cursor.show and self.p2_sel_cursor.show:
+                            if self._can_start_with_current_selection():
                                 self._attempt_start_session()
+                            else:
+                                self._set_start_alert('Please select both players before starting.')
                         elif focus == 'import_ai':
                             self._import_popup_open = True
                         elif focus == 'info':
@@ -688,8 +698,11 @@ class GameMainUpdateMixin:
                                 break
                         if clicked_custom_menu:
                             continue
-                        if self._start_button_rect.collidepoint(event.pos) and self.p1_sel_cursor.show and self.p2_sel_cursor.show:
+                        if self._start_button_rect.collidepoint(event.pos) and self._can_start_with_current_selection():
                             self._attempt_start_session()
+                            continue
+                        if self._start_button_rect.collidepoint(event.pos):
+                            self._set_start_alert('Please select both players before starting.')
                             continue
                         # Import AI button opens the exports folder for the user to place AI files
                         if hasattr(self, '_import_ai_button_rect') and self._import_ai_button_rect.collidepoint(event.pos):

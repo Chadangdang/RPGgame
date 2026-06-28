@@ -589,12 +589,20 @@ class GameMainRenderMixin:
                         pygame.draw.rect(self.screen, (130, 120, 104), row_rect, 2, border_radius=10)
                         label_surface = self.font_s.render(self._settings_char_ai_labels[idx], False, (0, 0, 0))
                         self.screen.blit(label_surface, label_surface.get_rect(midleft=(row_rect.x + 22, row_rect.centery)))
-                        value = AI_SELECTION_LABELS()[self.settings.team1_char_ai_ids[idx] if idx < 3 else self.settings.team2_char_ai_ids[idx - 3]]
-                        value_surface = self.font_s.render(value, False, (10, 10, 10))
+                        ai_labels = AI_SELECTION_LABELS()
+                        value = ai_labels[self.settings.team1_char_ai_ids[idx] if idx < 3 else self.settings.team2_char_ai_ids[idx - 3]]
+                        value_surface = self.font_s.render(_format_ai_selection_label(value), False, (10, 10, 10))
                         value_rect = self._settings_char_ai_value_rects[idx]
                         self.screen.blit(value_surface, value_surface.get_rect(midright=(value_rect.right - 20, value_rect.centery)))
                         arrow = self.font_sm.render('◄ ►', False, (0, 0, 0))
                         self.screen.blit(arrow, arrow.get_rect(midleft=(value_rect.x + 8, value_rect.centery)))
+
+                    start_btn_hovered = self._settings_char_ai_start_button_rect.collidepoint(mouse_pos)
+                    start_btn_fill = (255, 255, 255) if not start_btn_hovered else (240, 240, 240)
+                    pygame.draw.rect(self.screen, start_btn_fill, self._settings_char_ai_start_button_rect, border_radius=12)
+                    pygame.draw.rect(self.screen, (60, 60, 60), self._settings_char_ai_start_button_rect, 2, border_radius=12)
+                    start_btn_text = self.font_sm.render('Start Game', False, (0, 0, 0))
+                    self.screen.blit(start_btn_text, start_btn_text.get_rect(center=self._settings_char_ai_start_button_rect.center))
 
             # Map popup (reuse existing implementation)
             if self._map_popup_open:
