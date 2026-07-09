@@ -185,6 +185,9 @@ class GameMainLoggingMixin:
             "p2_rounds": 0,
             "p1_model": "",
             "p2_model": "",
+            "p1_char_ai": "",
+            "p2_char_ai": "",
+            "ai_mode": "",
             "_color": color,
         }
 
@@ -273,6 +276,7 @@ class GameMainLoggingMixin:
                     map=str(kwargs.get("map_label", "") or ""),
                     p1_model=str(kwargs.get("ai1", "") or ""),
                     p2_model=str(kwargs.get("ai2", "") or ""),
+                    ai_mode=str(kwargs.get("ai_mode", "") or ""),
                 )
                 self.log(
                     f"GAME : Balance Mode -> {self.get_balance_mode()}",

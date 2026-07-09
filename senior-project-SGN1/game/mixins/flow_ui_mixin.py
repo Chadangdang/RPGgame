@@ -564,6 +564,8 @@ class GameMainFlowUiMixin:
         ai1_name = self._get_ai_label(self.team1_ID)
         ai2_name = self._get_ai_label(self.team2_ID)
 
+        p1_char_ai = ''
+        p2_char_ai = ''
         map_override = self._next_map_id_override
         self._next_map_id_override = None
 
@@ -601,6 +603,27 @@ class GameMainFlowUiMixin:
                         (self.field.boxes_width, self.field.boxes_height),
                         (pos[0], pos[1]),
                         "player" + str(i + 1), team=2)
+
+        if getattr(getattr(self, 'settings', None), 'per_character_ai_enabled', False):
+            labels = AI_SELECTION_LABELS()
+            team1_ids = getattr(self, '_per_character_team1_ids', []) or []
+            team2_ids = getattr(self, '_per_character_team2_ids', []) or []
+            team1_roles = [
+                f"Char {idx + 1} ({str(chara.template.get('display_name', f'Char {idx+1}')).strip()})"
+                for idx, chara in enumerate(Character.team1_list[:len(team1_ids)])
+            ]
+            team2_roles = [
+                f"Char {idx + 1} ({str(chara.template.get('display_name', f'Char {idx+1}')).strip()})"
+                for idx, chara in enumerate(Character.team2_list[:len(team2_ids)])
+            ]
+            p1_char_ai = '; '.join(
+                f"{role}: {labels[i] if 0 <= i < len(labels) else 'Unknown'}"
+                for role, i in zip(team1_roles, team1_ids)
+            )
+            p2_char_ai = '; '.join(
+                f"{role}: {labels[i] if 0 <= i < len(labels) else 'Unknown'}"
+                for role, i in zip(team2_roles, team2_ids)
+            )
 
         self._apply_new_stats_balance()
 
@@ -681,6 +704,9 @@ class GameMainFlowUiMixin:
                        map_label=map_label,
                        ai1=ai1_name,
                        ai2=ai2_name,
+                       p1_char_ai=p1_char_ai,
+                       p2_char_ai=p2_char_ai,
+                       ai_mode='AI per character' if getattr(getattr(self, 'settings', None), 'per_character_ai_enabled', False) else 'AI by model',
                        time_elapsed=self.cumulative_time)
 
         self.log_event('round_begin',

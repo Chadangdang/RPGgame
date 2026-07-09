@@ -252,6 +252,9 @@ class GameMainExportMixin:
                         "obj_p2": 0,
                         "p1_model": "",
                         "p2_model": "",
+                        "p1_char_ai": "",
+                        "p2_char_ai": "",
+                        "ai_mode": "",
                         "duration_sum": 0.0,
                     }
                 return games_data[game_no]
@@ -273,6 +276,12 @@ class GameMainExportMixin:
                     game_data["p1_model"] = str(entry.get("p1_model", ""))
                 if not game_data["p2_model"] and entry.get("p2_model"):
                     game_data["p2_model"] = str(entry.get("p2_model", ""))
+                if not game_data["p1_char_ai"] and entry.get("p1_char_ai"):
+                    game_data["p1_char_ai"] = str(entry.get("p1_char_ai", ""))
+                if not game_data["p2_char_ai"] and entry.get("p2_char_ai"):
+                    game_data["p2_char_ai"] = str(entry.get("p2_char_ai", ""))
+                if not game_data["ai_mode"] and entry.get("ai_mode"):
+                    game_data["ai_mode"] = str(entry.get("ai_mode", ""))
 
                 team = as_int(entry.get("team", 0), 0)
                 damage = as_int(entry.get("damage", 0), 0)
@@ -349,10 +358,11 @@ class GameMainExportMixin:
             headers = [
                 "No.", "Log Type", "Log", "Match", "Round", "Team", "Time (seconds)", "Class", "Health",
                 "Position", "Action type", "Action name", "Target Class", "Target Position",
-                "Damage", "Heal", "Target Health before", "Target Health after"
+                "Damage", "Heal", "Target Health before", "Target Health after",
+                "P1 Model", "P2 Model", "P1 Character AI", "P2 Character AI"
             ]
             # column widths must match headers count
-            column_widths = [6, 12, 36, 8, 8, 6, 14, 18, 10, 18, 14, 18, 18, 18, 10, 10, 20, 20]
+            column_widths = [6, 12, 36, 8, 8, 6, 14, 18, 10, 18, 14, 18, 18, 18, 10, 10, 20, 20, 20, 20, 30, 30]
             used_titles: set[str] = set()
 
             # helper to split prefixed log tags (e.g. "MATCH : ...") for CSV clarity
@@ -392,9 +402,32 @@ class GameMainExportMixin:
             overall_summary_ws.merge_cells('A1:B1')
             overall_summary_ws.cell(row=1, column=2).border = thin_border
 
+            p1_char_rows = []
+            p2_char_rows = []
+            if first_game_data["p1_char_ai"]:
+                for part in first_game_data["p1_char_ai"].split("; "):
+                    if not part.strip():
+                        continue
+                    role, sep, assignment = part.partition(":")
+                    if sep:
+                        p1_char_rows.append((f"P1 {role.strip()} AI", assignment.strip()))
+                    else:
+                        p1_char_rows.append(("P1 Character AI", part.strip()))
+            if first_game_data["p2_char_ai"]:
+                for part in first_game_data["p2_char_ai"].split("; "):
+                    if not part.strip():
+                        continue
+                    role, sep, assignment = part.partition(":")
+                    if sep:
+                        p2_char_rows.append((f"P2 {role.strip()} AI", assignment.strip()))
+                    else:
+                        p2_char_rows.append(("P2 Character AI", part.strip()))
+
             overall_summary_data = [
                 ("P1 Model", first_game_data["p1_model"] or "Unknown"),
                 ("P2 Model", first_game_data["p2_model"] or "Unknown"),
+                ("AI Mode", first_game_data["ai_mode"] or "Unknown"),
+            ] + p1_char_rows + p2_char_rows + [
                 ("Configured Game Limit", max(1, as_int(getattr(self, "game_limit", 1), 1))),
                 ("Configured Match Limit", max(1, as_int(getattr(self, "match_limit", 1), 1))),
                 ("Game", total_games),
@@ -460,6 +493,10 @@ class GameMainExportMixin:
                         as_int(entry.get("heal", 0), 0),
                         as_int(entry.get("target_hp_before", 0), 0),
                         as_int(entry.get("target_hp_after", 0), 0),
+                        str(entry.get("p1_model", "")),
+                        str(entry.get("p2_model", "")),
+                        str(entry.get("p1_char_ai", "")),
+                        str(entry.get("p2_char_ai", "")),
                     ]
                     # sanitize string cells to avoid Excel treating them as formulas
                     sanitized = [sanitize_for_excel(v) if isinstance(v, str) else v for v in row_values]
@@ -490,9 +527,34 @@ class GameMainExportMixin:
                 winrate_p1_game = (p1_matches_in_game / total_matches_in_game) if total_matches_in_game else 0.0
                 winrate_p2_game = (p2_matches_in_game / total_matches_in_game) if total_matches_in_game else 0.0
 
+                p1_char_rows = []
+                p2_char_rows = []
+                if game_data["p1_char_ai"]:
+                    for part in game_data["p1_char_ai"].split("; "):
+                        if not part.strip():
+                            continue
+                        role, sep, assignment = part.partition(":")
+                        if sep:
+                            p1_char_rows.append((f"P1 {role.strip()} AI", assignment.strip()))
+                        else:
+                            p1_char_rows.append(("P1 Character AI", part.strip()))
+                if game_data["p2_char_ai"]:
+                    for part in game_data["p2_char_ai"].split("; "):
+                        if not part.strip():
+                            continue
+                        role, sep, assignment = part.partition(":")
+                        if sep:
+                            p2_char_rows.append((f"P2 {role.strip()} AI", assignment.strip()))
+                        else:
+                            p2_char_rows.append(("P2 Character AI", part.strip()))
+
                 summary_data = [
                     ("Map", normalize_map_value(game_data["map"]) or "Unknown"),
                     ("Winner", game_data["winner"] or "Unknown"),
+                    ("P1 Model", game_data["p1_model"] or "Unknown"),
+                    ("P2 Model", game_data["p2_model"] or "Unknown"),
+                    ("AI Mode", game_data["ai_mode"] or "Unknown"),
+                ] + p1_char_rows + p2_char_rows + [
                     ("Matches P1", p1_matches_in_game),
                     ("Matches P2", p2_matches_in_game),
                     ("Win rate P1", winrate_p1_game),
