@@ -31,7 +31,7 @@ LEGACY_TEMPLATE_PATH = INSERT_DIR / 'Ai_template.py'
 
 BUILTIN_AI: list[tuple[str, type[AIFramework]]] = [
     ('Player Input', PlayerInput),
-    ('Baseline AI', PerfectPlay),
+    ('Utility AI', PerfectPlay),
     ('Random AI', Random),
     ('Personality Cores AI', PersonalityCores),
     ('Aggressive Personality Cores AI', AggressivePersonalityCoresAI),

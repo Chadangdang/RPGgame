@@ -17,7 +17,7 @@ from pathlib import Path
 
 AI_SELECTION_LABELS = (
     'Player Input',
-    'Baseline AI',
+    'Utility AI',
     'Random AI',
     'Personality Cores AI',
     'Aggressive Personality Cores AI',

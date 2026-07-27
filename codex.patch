@@ -1,164 +1,61 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/senior-project-SGN1/game/mixins/init_mixin.py b/senior-project-SGN1/game/mixins/init_mixin.py
-index e4e874c2c582a3e804920114fde9c0663baae9ea..f24ca8cff82d9380dc40f24744bf4ade0b1d38e5 100644
---- a/senior-project-SGN1/game/mixins/init_mixin.py
-+++ b/senior-project-SGN1/game/mixins/init_mixin.py
-@@ -1,48 +1,92 @@
- import random
- import pygame
- import sys
- from Constants import *
- from Field import Field
- from Character import Character
- from Cursor import *
- import numpy as np
- import AI
- from GameMaster import GameMaster
- import GameMaster as GM
- from MapData import MapData
- import openpyxl
- from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
- from datetime import datetime
- import os
--from tkinter import Tk, filedialog
- from types import SimpleNamespace
- from insert.Ai_insertion_instruction import AI_INSERTION_INSTRUCTION
- from insert import ai_import_manager
+diff --git a/senior-project-SGN1/insert/ai_import_manager.py b/senior-project-SGN1/insert/ai_import_manager.py
+index 3eb5536603bff21647afb7493df7fe6fd045c92a..676907b39594193750c71bebd897c9111e2ea59b 100644
+--- a/senior-project-SGN1/insert/ai_import_manager.py
++++ b/senior-project-SGN1/insert/ai_import_manager.py
+@@ -9,51 +9,51 @@ from types import ModuleType
+ from typing import Any
  
- from game.balance import balance_controller
+ from AI import (
+     AIFramework,
+     AggressivePersonalityCoresAI,
+     DisableAI,
+     KillOneByOneAI,
+     PerfectPlay,
+     PersonalityCores,
+     PlayerInput,
+     Random,
+     StrategicPersonalityCoresAI,
+     SurvivalPersonalityCoresAI,
+ )
  
-+# tkinter made optional for cross-platform compatibility with pygame
-+def get_file_path(*, title: str | None = None, filetypes: list[tuple[str, str]] | None = None, default_path: str = "data/input.xlsx") -> str:
-+    root = None
-+    try:
-+        from tkinter import Tk, filedialog
-+
-+        root = Tk()
-+        root.withdraw()
-+
-+        # Force window to front (important for macOS)
-+        root.update()
-+        root.attributes("-topmost", True)
-+        root.lift()
-+        root.focus_force()
-+
-+        dialog_kwargs = {}
-+        if title is not None:
-+            dialog_kwargs['title'] = title
-+        if filetypes is not None:
-+            dialog_kwargs['filetypes'] = filetypes
-+
-+        file_path = filedialog.askopenfilename(**dialog_kwargs)
-+
-+        if file_path:
-+            return file_path
-+
-+    except Exception as e:
-+        print(f"Tkinter failed: {e}")
-+    finally:
-+        if root is not None:
-+            try:
-+                root.destroy()
-+            except Exception:
-+                pass
-+
-+    print("GUI not available. Please enter file path manually.")
-+    file_path = input("Enter file path: ").strip()
-+
-+    if not file_path:
-+        file_path = default_path
-+
-+    return file_path
-+
-+
-+
- def AI_SELECTION_LABELS() -> list[str]:
-     return GM.get_ai_labels()
+ ROOT_DIR = Path(__file__).resolve().parents[1]
+ INSERT_DIR = ROOT_DIR / 'insert'
+ CUSTOM_AI_DIR = INSERT_DIR / 'custom-ai'
+ REGISTRY_PATH = CUSTOM_AI_DIR / 'ai_registry.json'
+ TEMPLATE_PATH = CUSTOM_AI_DIR / 'Ai_template.py'
+ LEGACY_REGISTRY_PATH = INSERT_DIR / 'ai_registry.json'
+ LEGACY_TEMPLATE_PATH = INSERT_DIR / 'Ai_template.py'
+ 
+ BUILTIN_AI: list[tuple[str, type[AIFramework]]] = [
+     ('Player Input', PlayerInput),
+-    ('Baseline AI', PerfectPlay),
++    ('Utility AI', PerfectPlay),
+     ('Random AI', Random),
+     ('Personality Cores AI', PersonalityCores),
+     ('Aggressive Personality Cores AI', AggressivePersonalityCoresAI),
+     ('Strategic Personality Cores AI', StrategicPersonalityCoresAI),
+     ('Survival Personality Cores AI', SurvivalPersonalityCoresAI),
+     ('Kill One By One AI', KillOneByOneAI),
+     ('Disable AI', DisableAI),
+ ]
+ 
+ AI_LIST: list[type[AIFramework]] = [cls for _, cls in BUILTIN_AI]
+ AI_LABELS: list[str] = [label for label, _ in BUILTIN_AI]
+ AI_METADATA: list[dict[str, Any]] = []
  
  
+ def _safe_module_name(stem: str) -> str:
+     cleaned = re.sub(r'[^0-9a-zA-Z_]+', '_', stem)
+     return f'custom_ai_{cleaned}'
  
- # === Board placement (top-left of the 640x640 grid) ===
- # Lower this to move the whole board (and its A-H / 1-8 labels) higher on screen.
- BOARD_POS_X = WIDTH // 2 - 320
- BOARD_POS_Y = 40
  
- # === Game Log placement (anchored under the board) ===
- LOG_W = WIDTH - 40              # full-ish width (tweak as you like)
- LOG_H = 270                     # panel height (was 280)
- LOG_X = 20                      # left margin
- LOG_Y = BOARD_POS_Y + 700
- 
- # --- Cream UI colors for the bottom log panel (like your screenshot) ---
- UI_PANEL  = (251, 247, 242)   # panel fill
- UI_HEADER = (233, 226, 214)   # header strip
- UI_BORDER = (30, 30, 30)      # dark border
- UI_TEXT   = (20, 20, 20)      # text
- 
- LOG_COLOR_GAME    = (20, 20, 20)      # black
- LOG_COLOR_ROUND   = (255, 165, 0)     # orange
- LOG_COLOR_SUMMARY = (22, 138, 36)     # green
-@@ -487,59 +531,55 @@ class GameMainInitMixin:
- 
-         # --- Log panel style (header height kept) ---
-         self._log_header_h = 28
-         self._log_line_h = 22
-         self._log_scroll_step = 1   # lines per wheel tick
-         self._log_page_step = 8     # lines per page jump
- 
-         # --- Log scrolling state ---
-         # 0 shows the newest entry at the top.
-         # Increase this to scroll down to older content.
-         self.log_scroll = 0
- 
-         # --- Scrollbar interaction state ---
-         self._sb_dragging = False
-         self._sb_drag_offset_y = 0  # mouse offset inside thumb while dragging
-         self._sb_last_geometry = None  # cached geometry for hit tests
-         
-         self.cumulative_time = 0.0
-         self.match_start_time = 0.0
-         self.last_match_duration = 0.0     
-         
-         self.obj_control_team1 = 0
-         self.obj_control_team2 = 0
- 
-     def _open_file_picker(self) -> str:
--        root = Tk()
--        root.withdraw()
--        root.attributes('-topmost', True)
--        file_path = filedialog.askopenfilename(
-+        return get_file_path(
-             title='Select Python AI File',
-             filetypes=[('Python files', '*.py')],
-+            default_path='',
-         )
--        root.destroy()
--        return file_path
- 
-     def _refresh_ai_selection_ui(self) -> None:
-         labels = AI_SELECTION_LABELS()
-         ai_choice_count = len(labels)
-         self.menu_cursor = HoverMenuCursor(self.screen, (420, 60), (ai_choice_count, 2))
-         self.p1_sel_cursor = SelectMenuCursor(self.screen, (420, 60), (ai_choice_count, 1))
-         self.p2_sel_cursor = SelectMenuCursor(self.screen, (420, 60), (ai_choice_count, 1))
-         self._ai_type_labels = labels
-         self._refresh_ai_description_lines()
- 
-     def _refresh_ai_description_lines(self) -> None:
-         lines = list(getattr(self, '_instr_ai_lines_base', []))
-         custom_entries = [item for item in GM.get_ai_metadata() if item.get('name')]
-         if custom_entries:
-             lines.extend(['', ''])
-             for item in custom_entries:
-                 name = str(item.get('name', '')).strip()
-                 desc = str(item.get('description', '')).strip() or 'No description provided.'
-                 lines.append('')
-                 lines.append(f'{name} (custom AI): {desc}')
-         self._instr_ai_lines = lines
- 
-     def _custom_ai_map_by_name(self) -> dict[str, dict]:
-         return {str(item.get('name', '')).strip(): item for item in GM.get_ai_metadata() if str(item.get('name', '')).strip()}
- 
+ def _load_registry() -> list[dict[str, Any]]:
+     if not REGISTRY_PATH.exists() and LEGACY_REGISTRY_PATH.exists():
+         CUSTOM_AI_DIR.mkdir(parents=True, exist_ok=True)
+         shutil.copyfile(LEGACY_REGISTRY_PATH, REGISTRY_PATH)
+     if not REGISTRY_PATH.exists():
+         return []
  
 EOF
 )
